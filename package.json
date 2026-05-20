@@ -1,0 +1,27 @@
+{
+  "name": "@assert-labs/trace",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "assert": "./bin/assert.js"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --external:fs --external:path --external:child_process --external:os",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "author": "Assert Labs",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "esbuild": "^0.19.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
