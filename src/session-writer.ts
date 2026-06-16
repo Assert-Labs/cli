@@ -37,15 +37,32 @@ export function ensureSessionsDir(cwd: string = process.cwd()): string {
   return dir;
 }
 
+export interface SessionWriterOptions {
+  /** If true, write directly to dir without adding .sessions/ subdirectory */
+  direct?: boolean;
+}
+
 /**
  * Create a new session writer
  */
 export function createSessionWriter(
   sessionId: string,
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
+  options: SessionWriterOptions = {}
 ): SessionWriter {
-  ensureSessionsDir(cwd);
-  const filePath = path.join(cwd, getSessionFilePath(sessionId));
+  let filePath: string;
+
+  if (options.direct) {
+    // Write directly to the specified directory
+    if (!fs.existsSync(cwd)) {
+      fs.mkdirSync(cwd, { recursive: true });
+    }
+    filePath = path.join(cwd, `${sessionId}.jsonl`);
+  } else {
+    // Write to .sessions/ subdirectory (for repo-local storage)
+    ensureSessionsDir(cwd);
+    filePath = path.join(cwd, getSessionFilePath(sessionId));
+  }
 
   // Open file in append mode
   const fd = fs.openSync(filePath, 'a');
@@ -65,14 +82,26 @@ export function createSessionWriter(
   };
 }
 
+export interface SessionReadOptions {
+  /** If true, read directly from dir without .sessions/ subdirectory */
+  direct?: boolean;
+}
+
 /**
  * Read all events from a session file
  */
 export function readSessionEvents(
   sessionId: string,
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
+  options: SessionReadOptions = {}
 ): SessionEvent[] {
-  const filePath = path.join(cwd, getSessionFilePath(sessionId));
+  let filePath: string;
+
+  if (options.direct) {
+    filePath = path.join(cwd, `${sessionId}.jsonl`);
+  } else {
+    filePath = path.join(cwd, getSessionFilePath(sessionId));
+  }
 
   if (!fs.existsSync(filePath)) {
     return [];

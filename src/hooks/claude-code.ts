@@ -205,7 +205,7 @@ fi`;
 function getCentralSessionWriter(sessionId: string): SessionWriter {
   const sessionsDir = getSessionsDir();
   ensureSessionsDir();
-  return createSessionWriter(sessionId, sessionsDir);
+  return createSessionWriter(sessionId, sessionsDir, { direct: true });
 }
 
 /**

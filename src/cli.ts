@@ -70,10 +70,10 @@ function detectInstalledAgents(): string[] {
     detected.push('claude-code');
   }
 
-  // Cursor: check for .cursor directory (future support)
-  // if (fs.existsSync(path.join(home, '.cursor'))) {
-  //   detected.push('cursor');
-  // }
+  // Cursor: check for .cursor directory
+  if (fs.existsSync(path.join(home, '.cursor'))) {
+    detected.push('cursor');
+  }
 
   // Codex: check for .codex directory (future support)
   // if (fs.existsSync(path.join(home, '.codex'))) {
@@ -110,6 +110,34 @@ function generateClaudeCodePlugin(): { pluginJson: string; hooksJson: string } {
 }
 
 /**
+ * Generate Cursor plugin files
+ */
+function generateCursorPlugin(): { pluginJson: string; hooksJson: string } {
+  const pluginJson = JSON.stringify({
+    name: 'assert',
+    description: 'Capture AI agent sessions for code attribution',
+    version: '0.1.0',
+    author: { name: 'Assert Labs' },
+    hooks: 'hooks/hooks.json',
+  }, null, 2);
+
+  const hooksJson = JSON.stringify({
+    hooks: {
+      sessionStart: [{ command: '$HOME/.assert/bin/assert hook cursor sessionStart' }],
+      sessionEnd: [{ command: '$HOME/.assert/bin/assert hook cursor sessionEnd' }],
+      stop: [{ command: '$HOME/.assert/bin/assert hook cursor stop' }],
+      preToolUse: [{ command: '$HOME/.assert/bin/assert hook cursor preToolUse' }],
+      postToolUse: [{ command: '$HOME/.assert/bin/assert hook cursor postToolUse' }],
+      beforeSubmitPrompt: [{ command: '$HOME/.assert/bin/assert hook cursor beforeSubmitPrompt' }],
+      afterAgentResponse: [{ command: '$HOME/.assert/bin/assert hook cursor afterAgentResponse' }],
+      afterFileEdit: [{ command: '$HOME/.assert/bin/assert hook cursor afterFileEdit' }],
+    },
+  }, null, 2);
+
+  return { pluginJson, hooksJson };
+}
+
+/**
  * Install Claude Code plugin to skills directory (auto-loads)
  */
 function installClaudeCodePlugin(): void {
@@ -128,6 +156,27 @@ function installClaudeCodePlugin(): void {
   fs.writeFileSync(path.join(hooksDir, 'hooks.json'), hooksJson + '\n');
 
   log('Installed Claude Code plugin to ~/.claude/skills/assert');
+}
+
+/**
+ * Install Cursor plugin to extensions directory
+ */
+function installCursorPlugin(): void {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const pluginDir = path.join(home, '.cursor', 'plugins', 'assert');
+  const pluginMetaDir = path.join(pluginDir, '.cursor-plugin');
+  const hooksDir = path.join(pluginDir, 'hooks');
+
+  // Create directories
+  fs.mkdirSync(pluginMetaDir, { recursive: true });
+  fs.mkdirSync(hooksDir, { recursive: true });
+
+  // Generate and write plugin files
+  const { pluginJson, hooksJson } = generateCursorPlugin();
+  fs.writeFileSync(path.join(pluginMetaDir, 'plugin.json'), pluginJson + '\n');
+  fs.writeFileSync(path.join(hooksDir, 'hooks.json'), hooksJson + '\n');
+
+  log('Installed Cursor plugin to ~/.cursor/plugins/assert');
 }
 
 async function cmdInstall(agent?: string): Promise<void> {
@@ -180,7 +229,7 @@ async function cmdInstall(agent?: string): Promise<void> {
 
   // Detect installed agents
   const detectedAgents = detectInstalledAgents();
-  const supportedAgents = ['claude-code']; // Only Claude Code for now
+  const supportedAgents = ['claude-code', 'cursor'];
 
   // Filter to requested agent or all detected+supported
   let agentsToInstall: string[];
@@ -207,6 +256,9 @@ async function cmdInstall(agent?: string): Promise<void> {
     if (a === 'claude-code') {
       installClaudeCodePlugin();
       installed.push('claude-code');
+    } else if (a === 'cursor') {
+      installCursorPlugin();
+      installed.push('cursor');
     }
   }
 
@@ -564,7 +616,7 @@ async function cmdSessionsAll(): Promise<void> {
 
   for (const file of files) {
     const sessionId = file.replace('.jsonl', '');
-    const events = readSessionEvents(sessionId, sessionsDir);
+    const events = readSessionEvents(sessionId, sessionsDir, { direct: true });
     const metadata = extractSessionMetadata(events);
 
     if (!metadata) {
