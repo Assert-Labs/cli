@@ -1,6 +1,8 @@
-# Assert Trace
+# Assert
 
-Trace agent actions to lines of code.
+Capture AI agent sessions from any agentic coding tool (Cursor, Claude Code, Codex, etc.)
+
+Sessions are stored as JSONL files in `.sessions/` directory.
 
 ## Installation
 
@@ -9,91 +11,77 @@ git clone https://github.com/assert-labs/trace.git
 cd trace
 pnpm install
 pnpm build
-npm link
+npm install -g .
 ```
 
 ## Quick Start
 
 ```bash
-# Initialize in a git repo
-assert init
+# Install hooks for all supported agents
+assert install
 
-# That's it! Traces are now captured automatically via git hooks.
+# That's it! Sessions are now captured automatically.
 ```
 
 ## How It Works
 
-1. **Agent hook** captures session data when an agent completes (Cursor, Claude Code, etc.)
-2. **post-commit hook** attaches traces to commits as git notes
-3. **assert blame** shows what prompt/session produced a line of code
-
-```
-Agent writes code
-       ↓
-[Agent stop hook] → assert capture
-       ↓
-Session stored in .git/assert/pending/
-       ↓
-git commit
-       ↓
-[post-commit hook] → assert commit
-       ↓
-Trace attached as git note
-       ↓
-assert blame file:line → shows prompt + session
-```
+1. **Global hooks** are installed to each agent's config directory
+2. When an agent session starts, a new JSONL file is created in `.sessions/`
+3. All events (prompts, tool calls, responses) are appended to the session file
+4. Git branch changes are tracked automatically
 
 ## Commands
 
 ```bash
-assert init              # Initialize in current repo
-assert capture           # Capture session from stdin (used by hooks)
-assert commit            # Attach pending traces to latest commit
-assert blame <file>:<line>  # Show what produced a line
-assert show <session-id> # Show full session details
-assert help              # Show help
+assert install [agent]      # Install hooks globally (all agents if none specified)
+assert sessions             # List sessions in current directory
+assert show <session-id>    # Show session details
+assert status               # Show current status
+assert help                 # Show help
 ```
+
+## Supported Agents
+
+- **claude-code** - Claude Code CLI
+- **cursor** - Cursor IDE
+- **codex** - OpenAI Codex CLI
 
 ## Example
 
 ```bash
-$ assert blame src/auth/login.ts:42
+$ assert sessions
 
-src/auth/login.ts:42
-  Commit: abc1234
+[assert] Found 2 session(s):
 
-  Session: sess_xyz789
-  Model: claude-sonnet-4-20250514
-  Prompt: "Add error handling to the login function"
-  Tool calls: 3
-```
+  [ACTIVE] abc123-xyz
+           source: claude-code | 5 turns | 12 tool calls | 3 files
+           started: 2024-01-15T10:30:00Z
+           branches: main, feature/auth
 
-## Schema
+  [ended] def456-uvw
+           source: cursor      | 3 turns | 8 tool calls | 1 files
+           started: 2024-01-15T09:00:00Z
 
-Sessions follow this structure:
+$ assert show abc123-xyz
 
-```typescript
-interface Session {
-  id: string;
-  turns: Turn[];
-}
+Session: abc123-xyz
+Source: claude-code
+Started: 2024-01-15T10:30:00Z
+Branches: main, feature/auth
+Turns: 5
+Tool Calls: 12
+Files Modified: src/auth.ts, src/login.ts, tests/auth.test.ts
 
-type Turn = HumanTurn | AssistantTurn;
-
-interface HumanTurn {
-  type: 'human';
-  content: string; // The prompt
-}
-
-interface AssistantTurn {
-  type: 'assistant';
-  model?: string;
-  blocks: ContentBlock[]; // Text, tool calls, tool results
-}
+Events:
+-------
+10:30:00 [session_start] cwd=/project, branch=main
+10:30:05 [human] "Add error handling to the login function"
+10:30:06 [assistant_start] model=claude-sonnet-4-20250514
+10:30:07 [tool_call] Read({"file_path": "/project/src/login.ts"})
+...
 ```
 
 ## Storage
 
-- **Pending traces**: `.git/assert/pending/`
-- **Full sessions**: `.git/assert/sessions/`
-- **Git notes**: `refs/notes/assert-traces`
+- **Sessions**: `.sessions/<session-id>.jsonl`
+- Each line is a JSON event (session_start, human_turn, tool_call, etc.)

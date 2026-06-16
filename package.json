@@ -1,5 +1,5 @@
 {
-  "name": "@assert-labs/trace",
+  "name": "@assert-labs/cli",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -8,9 +8,12 @@
     "assert": "./bin/assert.js"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --external:fs --external:path --external:child_process --external:os",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --external:fs --external:path --external:child_process --external:os --external:crypto",
     "dev": "tsx src/cli.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "files": [
     "dist",
@@ -20,8 +23,10 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "esbuild": "^0.19.0",
+    "esbuild": "^0.28.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.0"
-  }
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.8"
+  },
+  "packageManager": "pnpm@10.27.0+sha512.72d699da16b1179c14ba9e64dc71c9a40988cbdc65c264cb0e489db7de917f20dcf4d64d8723625f2969ba52d4b7e2a1170682d9ac2a5dcaeaab732b7e16f04a"
 }

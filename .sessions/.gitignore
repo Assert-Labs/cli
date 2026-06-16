@@ -1,0 +1,2 @@
+# Ignore active session state files
+.*-active-session

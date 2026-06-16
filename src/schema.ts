@@ -1,121 +1,189 @@
 /**
- * Trace Schema
+ * Assert Schema - JSONL Event-Based Format
  *
- * Data model for capturing agent sessions and associating them with code changes.
- * Compatible with agent-trace.dev spec, extended with session content.
+ * Sessions are stored as JSONL files in .sessions/ folder.
+ * Each line is a JSON-serialized event that's appended as it occurs.
+ * This enables streaming writes and crash recovery.
  */
 
-// === Session Types ===
-// A session is a conversation between human and AI agent
+// === Base Event ===
+// All events share this structure
 
-export interface Session {
-  id: string;
-  source?: string; // Tool that captured this: "cursor", "claude-code", "codex", etc.
-  turns: Turn[];
+export interface BaseEvent {
+  type: string;
+  timestamp: string; // ISO 8601
+  sessionId: string;
 }
 
-export type Turn = HumanTurn | AssistantTurn;
+// === Session Lifecycle Events ===
 
-export interface HumanTurn {
-  type: 'human';
-  timestamp?: string;
-  content: string;
+export interface SessionStartEvent extends BaseEvent {
+  type: 'session_start';
+  source: SessionSource;
+  cwd: string; // Working directory when session started
+  gitBranch?: string; // Current git branch at start
+  gitRef?: string; // Current HEAD ref
 }
 
-export interface AssistantTurn {
-  type: 'assistant';
-  timestamp?: string;
-  model?: string;
-  blocks: ContentBlock[];
-}
-
-// === Content Blocks ===
-// Blocks appear in sequence within an AssistantTurn
-
-export type ContentBlock = TextBlock | ToolCallBlock | ToolResultBlock;
-
-export interface TextBlock {
-  type: 'text';
-  text: string;
-}
-
-export interface ToolCallBlock {
-  type: 'tool_call';
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
-export interface ToolResultBlock {
-  type: 'tool_result';
-  tool_call_id: string;
-  output?: string;
+export interface SessionEndEvent extends BaseEvent {
+  type: 'session_end';
+  reason: 'completed' | 'aborted' | 'error';
   error?: string;
 }
 
-// === Trace Types ===
-// A trace links code changes to sessions (stored in git notes)
+// === Turn Events ===
+// Human messages and assistant responses
 
-export interface Trace {
-  version: string;
-  id: string;
-  timestamp: string;
-  vcs: {
-    type: 'git';
-    revision: string; // commit SHA
-  };
-  files: FileAttribution[];
-  sessions: Record<string, SessionSummary>; // session_id -> summary
+export interface HumanTurnEvent extends BaseEvent {
+  type: 'human_turn';
+  turnId: string;
+  content: string;
 }
 
-export interface FileAttribution {
-  path: string;
-  conversations: Conversation[];
+export interface AssistantTurnStartEvent extends BaseEvent {
+  type: 'assistant_turn_start';
+  turnId: string;
+  model?: string;
 }
 
-export interface Conversation {
-  id: string; // references sessions[id]
-  contributor: {
-    type: 'human' | 'ai' | 'mixed';
-    model?: string;
-  };
-  ranges: LineRange[];
+export interface AssistantTextEvent extends BaseEvent {
+  type: 'assistant_text';
+  turnId: string;
+  text: string;
 }
+
+export interface AssistantTurnEndEvent extends BaseEvent {
+  type: 'assistant_turn_end';
+  turnId: string;
+  // Content hash of the full assistant response for attribution
+  contentHash?: string;
+}
+
+// === Tool Events ===
+
+export interface ToolCallEvent extends BaseEvent {
+  type: 'tool_call';
+  turnId: string;
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+}
+
+export interface ToolResultEvent extends BaseEvent {
+  type: 'tool_result';
+  turnId: string;
+  toolCallId: string;
+  output?: string;
+  error?: string;
+  // Files modified by this tool call
+  filesModified?: string[];
+}
+
+// === Git Events ===
+// Track branch switches during a session
+
+export interface BranchSwitchEvent extends BaseEvent {
+  type: 'branch_switch';
+  fromBranch?: string;
+  toBranch: string;
+  fromRef?: string;
+  toRef: string;
+}
+
+// === File Attribution Events ===
+// Record which content contributed to which files
+
+export interface FileAttributionEvent extends BaseEvent {
+  type: 'file_attribution';
+  turnId: string;
+  filePath: string;
+  // Hash of the content that was written/modified
+  contentHash: string;
+  // Line ranges affected (1-indexed, inclusive)
+  lineRanges?: LineRange[];
+  operation: 'create' | 'modify' | 'delete';
+}
+
+// === Union Types ===
+
+export type SessionEvent =
+  | SessionStartEvent
+  | SessionEndEvent
+  | HumanTurnEvent
+  | AssistantTurnStartEvent
+  | AssistantTextEvent
+  | AssistantTurnEndEvent
+  | ToolCallEvent
+  | ToolResultEvent
+  | BranchSwitchEvent
+  | FileAttributionEvent;
+
+// === Supporting Types ===
+
+export type SessionSource = 'cursor' | 'claude-code' | 'codex' | 'unknown';
 
 export interface LineRange {
-  start_line: number; // 1-indexed
-  end_line: number; // 1-indexed, inclusive
+  startLine: number; // 1-indexed
+  endLine: number; // 1-indexed, inclusive
 }
 
-export interface SessionSummary {
-  prompt: string; // The human prompt that initiated this
-  source?: string; // Tool that captured: "cursor", "claude-code", "codex", etc.
-  model?: string; // Model used
-  tool_calls_count?: number; // How many tool calls were made
-  files_modified?: string[]; // Which files were touched
+// === Session File Metadata ===
+// Extracted from events for quick querying
+
+export interface SessionMetadata {
+  id: string;
+  source: SessionSource;
+  startTime: string;
+  endTime?: string;
+  branches: string[]; // All branches touched during session
+  filesModified: string[]; // All files modified
+  turnCount: number;
+  toolCallCount: number;
 }
 
-// === Pending Trace ===
-// Stored before commit, waiting to be attached
+// === Content Hash for Attribution ===
+// Used to match content across rebases
 
-export interface PendingTrace {
-  session_id: string;
-  captured_at: string;
-  session: Session;
-  files_modified: string[];
+export interface ContentSignature {
+  // Hash of normalized content (whitespace-insensitive)
+  hash: string;
+  // First N characters for quick identification
+  preview: string;
+  // Length of original content
+  length: number;
 }
 
-// === Config ===
+// === Utility Functions ===
 
-export interface TraceConfig {
-  version: number;
-  backend_url?: string; // Where to push traces (future)
-  auto_commit: boolean; // Run assert commit on git commit
-  auto_push: boolean; // Sync traces on git push
+export function createSessionId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 8);
+  return `${timestamp}-${random}`;
 }
 
-export const DEFAULT_CONFIG: TraceConfig = {
-  version: 1,
-  auto_commit: true,
-  auto_push: true,
-};
+export function createTurnId(): string {
+  return Math.random().toString(36).substring(2, 10);
+}
+
+export function createToolCallId(): string {
+  return `tc-${Math.random().toString(36).substring(2, 10)}`;
+}
+
+export function parseSessionEvent(line: string): SessionEvent {
+  return JSON.parse(line) as SessionEvent;
+}
+
+export function serializeSessionEvent(event: SessionEvent): string {
+  return JSON.stringify(event);
+}
+
+// === Session File Helpers ===
+
+export function getSessionFilePath(sessionId: string): string {
+  return `.sessions/${sessionId}.jsonl`;
+}
+
+export function parseSessionId(filePath: string): string | null {
+  const match = filePath.match(/\.sessions\/([^/]+)\.jsonl$/);
+  return match ? match[1] : null;
+}
