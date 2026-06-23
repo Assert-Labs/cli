@@ -1,0 +1,30 @@
+formula-templates/assert.rb
+  s_40cae84f7d4f12::t_e4426524b17155 1-46
+.github/workflows/release.yml
+  s_40cae84f7d4f12::t_3ab7fa9675db9c 126-169
+  h_a0e615773b4470 22,46
+  s_40cae84f7d4f12::t_eca7266d0ff217 103-105
+package.json
+  h_a0e615773b4470 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "31de16fa44aa401e340aa2fc640e32d1defcf0f6",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_40cae84f7d4f12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "061f9704-6e23-47bd-88ec-a3a6a82a4129",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
