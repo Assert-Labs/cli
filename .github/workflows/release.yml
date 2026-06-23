@@ -5,8 +5,8 @@ name: release
 #
 # Cross-compilation note: Node SEA embeds the *host* node binary, so we cannot
 # cross-compile — each target needs a matching runner (arm64 macOS = macos-14,
-# x64 macOS = macos-13, arm64 Linux = ubuntu-24.04-arm). arm64 Linux runners are
-# free for public repos.
+# x64 macOS = macos-15-intel, arm64 Linux = ubuntu-24.04-arm). arm64 Linux runners
+# are free for public repos.
 #
 # macOS signing: we ad-hoc sign (`codesign --sign -`) because Apple Silicon
 # refuses to run a binary whose signature postject invalidated. That is enough
@@ -33,7 +33,7 @@ jobs:
       matrix:
         include:
           - { os: macos-14, target: darwin-arm64 }
-          - { os: macos-13, target: darwin-x64 }
+          - { os: macos-15-intel, target: darwin-x64 }
           - { os: ubuntu-latest, target: linux-x64 }
           - { os: ubuntu-24.04-arm, target: linux-arm64 }
     steps:
