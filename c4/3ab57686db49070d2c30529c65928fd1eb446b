@@ -1,0 +1,49 @@
+package.json
+  s_fb85c9292ccc23::t_0453e3bb7bfadd 5,9-11,14,19-20
+sea-config.json
+  s_fb85c9292ccc23::t_df62e186cfb34e 1-7
+src/session-index.ts
+  s_fb85c9292ccc23::t_0539082fec6b94 126-138
+src/cli.ts
+  s_fb85c9292ccc23::t_5f9bdaa0b60074 12
+  s_fb85c9292ccc23::t_f0ff484a8f4dc1 168
+  s_fb85c9292ccc23::t_33f3cc8f5a7b84 129
+  s_fb85c9292ccc23::t_7a95933629ef08 171-178
+  s_fb85c9292ccc23::t_8764f21f853b5e 119-121
+  s_fb85c9292ccc23::t_607be8d70959ec 198-200,204-205
+  s_fb85c9292ccc23::t_6caf934d0973d7 90-118,122-128,130-132,140-150,152
+.github/workflows/release.yml
+  s_fb85c9292ccc23::t_ec88d42eb8f3ff 1-63,67-122
+  s_fb85c9292ccc23::t_f7acc7e11019fe 64-66
+src/hooks/claude-code.ts
+  s_fb85c9292ccc23::t_95b28a70a5a733 86,92
+  s_fb85c9292ccc23::t_cb87f47e4943be 38
+  s_fb85c9292ccc23::t_27d48dbda2c45d 4-6,10-17,28,55-57,61-68,70,72,76-77,81-83,89-91,93,99-100,102,108,115-116,122-123,125,128-129,131,135-136,145,153-154,160-161,163-164,170,175,183-184,186,191,196,199,210
+src/hooks/session-recorder.ts
+  s_fb85c9292ccc23::t_a9ecab0ef79018 1-141,144-146,185-340,342-343,345-353,355-360,365,371-381,392-394
+  s_fb85c9292ccc23::t_ac5f05c2ad8014 142-143,147-184
+  s_fb85c9292ccc23::t_740c6dcba84002 341,344,354,361-364,366-370,382-391
+src/hooks/cursor.ts
+  s_fb85c9292ccc23::t_aed2b2acb7a3c9 4-6,8-9,14-22,33-34,63-67,70-77,79,81,87,92,97-99,103-107,112,114,117,124,131-133,137,139,143-153,157-170,174,176,183,187-189,193,195,199,204,206,214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "c43ab57686db49070d2c30529c65928fd1eb446b",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_fb85c9292ccc23": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0e8ffd93-262e-464d-b2ca-ec3aa603165e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
