@@ -19,7 +19,7 @@ name: release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -43,7 +43,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: pnpm
 
       - name: Install dependencies
@@ -100,6 +100,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout (for the Homebrew formula template)
+        uses: actions/checkout@v4
+
       - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
@@ -120,3 +123,47 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --generate-notes \
             artifacts/assert-* artifacts/SHA256SUMS
+
+      - name: Update Homebrew tap
+        # Renders formula-templates/assert.rb with the release version and the
+        # per-platform sha256s from SHA256SUMS, then pushes it to the tap repo.
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VER="${VERSION#v}"
+
+          sha() {
+            local v
+            v="$(awk -v f="$1" '$2 == f { print $1 }' artifacts/SHA256SUMS)"
+            [[ -n "$v" ]] || { echo "::error::missing sha256 for $1 in SHA256SUMS" >&2; exit 1; }
+            printf '%s' "$v"
+          }
+          SHA_DARWIN_ARM64="$(sha assert-darwin-arm64)"
+          SHA_DARWIN_X64="$(sha assert-darwin-x64)"
+          SHA_LINUX_ARM64="$(sha assert-linux-arm64)"
+          SHA_LINUX_X64="$(sha assert-linux-x64)"
+
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/Assert-Labs/homebrew-tap.git" tap
+
+          mkdir -p tap/Formula
+          sed \
+            -e "s/__VERSION__/${VER}/g" \
+            -e "s/__SHA_DARWIN_ARM64__/${SHA_DARWIN_ARM64}/g" \
+            -e "s/__SHA_DARWIN_X64__/${SHA_DARWIN_X64}/g" \
+            -e "s/__SHA_LINUX_ARM64__/${SHA_LINUX_ARM64}/g" \
+            -e "s/__SHA_LINUX_X64__/${SHA_LINUX_X64}/g" \
+            formula-templates/assert.rb > tap/Formula/assert.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/assert.rb
+          if git diff --cached --quiet; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+          git commit -m "assert ${VER}"
+          git push
