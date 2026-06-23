@@ -9,6 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 import { processHook, type AgentType } from './hooks/index';
 import {
   listSessionFiles,
@@ -86,7 +87,49 @@ function detectInstalledAgents(): string[] {
 /**
  * Generate Claude Code plugin files
  */
-function generateClaudeCodePlugin(): { pluginJson: string; hooksJson: string } {
+/**
+ * Detect the installed Claude Code version (e.g. "2.1.183"), or null if the
+ * `claude` CLI isn't available.
+ */
+function detectClaudeCodeVersion(): string | null {
+  try {
+    const out = execSync('claude --version', {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const m = out.match(/(\d+\.\d+\.\d+)/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Return true if semver `a` >= `b` (x.y.z). */
+function versionGte(a: string, b: string): boolean {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0;
+  }
+  return true;
+}
+
+// Claude Code hook events Assert subscribes to. `minVersion` gates events to
+// the version that introduced them (per the Claude Code changelog); omit it for
+// foundational events that predate any version supporting skills-dir plugins.
+const CLAUDE_HOOK_EVENTS: Array<{ event: string; minVersion?: string }> = [
+  { event: 'SessionStart' },
+  { event: 'SessionEnd' },
+  { event: 'Stop' },
+  { event: 'PreToolUse' },
+  { event: 'PostToolUse' },
+  { event: 'UserPromptSubmit' },
+  { event: 'MessageDisplay', minVersion: '2.1.152' },
+];
+
+function generateClaudeCodePlugin(claudeVersion: string | null): { pluginJson: string; hooksJson: string } {
   const pluginJson = JSON.stringify({
     name: 'assert',
     description: 'Capture AI agent sessions for code attribution',
@@ -94,18 +137,19 @@ function generateClaudeCodePlugin(): { pluginJson: string; hooksJson: string } {
     author: { name: 'Assert Labs' },
   }, null, 2);
 
-  const hooksJson = JSON.stringify({
-    hooks: {
-      SessionStart: [{ hooks: [{ type: 'command', command: '$HOME/.assert/bin/assert hook claude-code SessionStart' }] }],
-      SessionEnd: [{ hooks: [{ type: 'command', command: '$HOME/.assert/bin/assert hook claude-code SessionEnd' }] }],
-      Stop: [{ hooks: [{ type: 'command', command: '$HOME/.assert/bin/assert hook claude-code Stop' }] }],
-      PreToolUse: [{ hooks: [{ type: 'command', command: '$HOME/.assert/bin/assert hook claude-code PreToolUse' }] }],
-      PostToolUse: [{ hooks: [{ type: 'command', command: '$HOME/.assert/bin/assert hook claude-code PostToolUse' }] }],
-      UserPromptSubmit: [{ hooks: [{ type: 'command', command: '$HOME/.assert/bin/assert hook claude-code UserPromptSubmit' }] }],
-      MessageDisplay: [{ hooks: [{ type: 'command', command: '$HOME/.assert/bin/assert hook claude-code MessageDisplay' }] }],
-    },
-  }, null, 2);
+  const hooks: Record<string, unknown> = {};
+  for (const { event, minVersion } of CLAUDE_HOOK_EVENTS) {
+    // Skip version-gated events the installed Claude Code is too old for.
+    // If the version is unknown, include everything (safest).
+    if (minVersion && claudeVersion && !versionGte(claudeVersion, minVersion)) {
+      continue;
+    }
+    hooks[event] = [
+      { hooks: [{ type: 'command', command: `$HOME/.assert/bin/assert hook claude-code ${event}` }] },
+    ];
+  }
 
+  const hooksJson = JSON.stringify({ hooks }, null, 2);
   return { pluginJson, hooksJson };
 }
 
@@ -121,16 +165,17 @@ function generateCursorPlugin(): { pluginJson: string; hooksJson: string } {
     hooks: 'hooks/hooks.json',
   }, null, 2);
 
+  const cmd = (type: string) => `$HOME/.assert/bin/assert hook cursor ${type}`;
   const hooksJson = JSON.stringify({
     hooks: {
-      sessionStart: [{ command: '$HOME/.assert/bin/assert hook cursor sessionStart' }],
-      sessionEnd: [{ command: '$HOME/.assert/bin/assert hook cursor sessionEnd' }],
-      stop: [{ command: '$HOME/.assert/bin/assert hook cursor stop' }],
-      preToolUse: [{ command: '$HOME/.assert/bin/assert hook cursor preToolUse' }],
-      postToolUse: [{ command: '$HOME/.assert/bin/assert hook cursor postToolUse' }],
-      beforeSubmitPrompt: [{ command: '$HOME/.assert/bin/assert hook cursor beforeSubmitPrompt' }],
-      afterAgentResponse: [{ command: '$HOME/.assert/bin/assert hook cursor afterAgentResponse' }],
-      afterFileEdit: [{ command: '$HOME/.assert/bin/assert hook cursor afterFileEdit' }],
+      sessionStart: [{ command: cmd('sessionStart') }],
+      sessionEnd: [{ command: cmd('sessionEnd') }],
+      stop: [{ command: cmd('stop') }],
+      preToolUse: [{ command: cmd('preToolUse') }],
+      postToolUse: [{ command: cmd('postToolUse') }],
+      beforeSubmitPrompt: [{ command: cmd('beforeSubmitPrompt') }],
+      afterAgentResponse: [{ command: cmd('afterAgentResponse') }],
+      afterFileEdit: [{ command: cmd('afterFileEdit') }],
     },
   }, null, 2);
 
@@ -150,12 +195,14 @@ function installClaudeCodePlugin(): void {
   fs.mkdirSync(pluginMetaDir, { recursive: true });
   fs.mkdirSync(hooksDir, { recursive: true });
 
-  // Generate and write plugin files
-  const { pluginJson, hooksJson } = generateClaudeCodePlugin();
+  // Tailor the hook events to the installed Claude Code version.
+  const claudeVersion = detectClaudeCodeVersion();
+  const { pluginJson, hooksJson } = generateClaudeCodePlugin(claudeVersion);
   fs.writeFileSync(path.join(pluginMetaDir, 'plugin.json'), pluginJson + '\n');
   fs.writeFileSync(path.join(hooksDir, 'hooks.json'), hooksJson + '\n');
 
-  log('Installed Claude Code plugin to ~/.claude/skills/assert');
+  const ver = claudeVersion ? `Claude Code ${claudeVersion}` : 'Claude Code (version undetected)';
+  log(`Installed Claude Code plugin to ~/.claude/skills/assert for ${ver} (auto-loads as assert@skills-dir)`);
 }
 
 /**

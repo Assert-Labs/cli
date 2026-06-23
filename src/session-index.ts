@@ -123,15 +123,19 @@ export function indexSession(
   startTime: string,
   isActive: boolean = true
 ): SessionIndex {
-  // Add to sessions
-  index.sessions[sessionId] = {
-    sessionId,
-    repoId,
-    gitRoot,
-    startTime,
-    filesModified: [],
-    isActive,
-  };
+  // Add to sessions. Don't clobber an existing entry — a session can span
+  // multiple repos and is indexed once per repo; keep the first entry's
+  // metadata (startTime, filesModified) intact across those calls.
+  if (!index.sessions[sessionId]) {
+    index.sessions[sessionId] = {
+      sessionId,
+      repoId,
+      gitRoot,
+      startTime,
+      filesModified: [],
+      isActive,
+    };
+  }
 
   // Add to repoSessions
   if (!index.repoSessions[repoId]) {

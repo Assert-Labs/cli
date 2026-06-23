@@ -1,0 +1,122 @@
+name: release
+
+# Builds standalone single-executable (SEA) binaries for each OS/arch and
+# publishes them to a GitHub Release on every v* tag.
+#
+# Cross-compilation note: Node SEA embeds the *host* node binary, so we cannot
+# cross-compile — each target needs a matching runner (arm64 macOS = macos-14,
+# x64 macOS = macos-13, arm64 Linux = ubuntu-24.04-arm). arm64 Linux runners are
+# free for public repos.
+#
+# macOS signing: we ad-hoc sign (`codesign --sign -`) because Apple Silicon
+# refuses to run a binary whose signature postject invalidated. That is enough
+# for the `curl | bash` install path — curl does NOT set the com.apple.quarantine
+# attribute, so Gatekeeper never inspects the binary. Developer ID signing +
+# notarization is only needed if you later add a browser/.dmg/.pkg download; to
+# enable it, replace the ad-hoc `codesign --sign -` with a Developer ID identity
+# imported from secrets and add a notarytool step.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, target: darwin-arm64 }
+          - { os: macos-13, target: darwin-x64 }
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bundle CLI to CommonJS
+        run: pnpm build:sea
+
+      - name: Generate SEA blob
+        run: node --experimental-sea-config sea-config.json
+
+      - name: Create binary from node + inject blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Copy the running node binary to use as the executable host.
+          node -e "require('fs').copyFileSync(process.execPath, 'assert')"
+          # The copied node binary may lack the owner-write bit, which makes
+          # postject fail with "Can't read and write to target executable".
+          chmod u+w assert
+
+          FUSE="NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2"
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            # Strip the existing signature before injecting, then re-sign ad-hoc.
+            codesign --remove-signature assert
+            npx --yes postject assert NODE_SEA_BLOB dist/sea/sea-prep.blob \
+              --sentinel-fuse "$FUSE" \
+              --macho-segment-name NODE_SEA
+            codesign --sign - assert
+            codesign --verify --verbose assert
+          else
+            npx --yes postject assert NODE_SEA_BLOB dist/sea/sea-prep.blob \
+              --sentinel-fuse "$FUSE"
+          fi
+
+          chmod +x assert
+          mv assert "assert-${{ matrix.target }}"
+
+      - name: Smoke test the binary
+        # Only run binaries matching the host arch (always true here since each
+        # target has a native runner). `help` exits 0 on this CLI.
+        shell: bash
+        run: ./assert-${{ matrix.target }} help
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: assert-${{ matrix.target }}
+          path: assert-${{ matrix.target }}
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum assert-* > SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            artifacts/assert-* artifacts/SHA256SUMS

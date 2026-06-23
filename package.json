@@ -2,18 +2,22 @@
   "name": "@assert-labs/cli",
   "version": "0.1.0",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/cli.js",
   "bin": {
     "assert": "./bin/assert.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --external:fs --external:path --external:child_process --external:os --external:crypto",
+    "build:sea": "esbuild src/cli.ts --bundle --platform=node --format=cjs --outfile=dist/sea/cli.cjs",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "pnpm build"
   },
   "files": [
     "dist",
