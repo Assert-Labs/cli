@@ -1,0 +1,27 @@
+README.md
+  h_a0e615773b4470 1-21,23,25,27,29-31,35-38,44-50,56,66,73-78,81-84,86-87,99,101
+  s_fb85c9292ccc23::t_3e94185900937a 39-43,51-55,59-60
+CONTRIBUTING.md
+  h_a0e615773b4470 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "59771aba781003a1e5fced5b2b3afba828ae4f2a",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_fb85c9292ccc23": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0e8ffd93-262e-464d-b2ca-ec3aa603165e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
