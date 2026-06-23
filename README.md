@@ -1,34 +1,90 @@
-# Assert
+<h1>
+<p align="center">
+  <img width="128" alt="logo" src="https://github.com/user-attachments/assets/a6e95413-74af-4980-bbee-edf398fb290b" />
+  <br>Assert
+</h1>
+  <p align="center">
+    Share session data from any coding agent.
+    <br />
+    <a href="#about">About</a>
+    ·
+    <a href="#installation">Installation</a>
+    ·
+    <a href="#supported-agents">Supported Agents</a> 
+    ·
+    <a href="https://docs.assert.dev">Documentation</a>
+  </p>
+  <p align="center">
+    <a href="https://github.com/Assert-Labs/cli/actions/workflows/release.yml"><img src="https://github.com/Assert-Labs/cli/actions/workflows/release.yml/badge.svg" alt="release"></a>
+    <a href="https://discord.gg/YqKKrBmam"><img src="https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white" alt="discord"></a>
+  </p>
+</p>
 
-Capture AI agent sessions from any agentic coding tool (Cursor, Claude Code, Codex, etc.)
+## About
 
-Sessions are stored as JSONL files in `.sessions/` directory.
+Capture AI agent sessions from any agentic coding tool as part of your repository's history and reference them during code review.
+
+## How It Works
+
+1. **Global hooks** are installed to each agent's config directory.
+2. When an agent session starts, a new JSONL file is created in `.sessions/`.
+3. All events (prompts, tool calls, responses) are appended to the session file.
 
 ## Installation
 
+> [!NOTE]
+> Right now, only MacOS/Linux operating systems are supported.
+
+**Native Install (Recommended):**
+
 ```bash
-git clone https://github.com/assert-labs/trace.git
-cd trace
+curl https://assert.dev/install -fsS | bash
+```
+
+**Homebrew:**
+
+```bash
+brew install assert-labs/tap/assert
+```
+
+**NPM:**
+
+```bash
+npm install -g @assert-labs/cli
+```
+
+**From Source:**
+
+```bash
+git clone https://github.com/Assert-Labs/cli.git
+cd cli
 pnpm install
 pnpm build
 npm install -g .
 ```
 
-## Quick Start
+### Initializing Hooks
 
 ```bash
 # Install hooks for all supported agents
 assert install
-
-# That's it! Sessions are now captured automatically.
 ```
 
-## How It Works
+### Requirements
 
-1. **Global hooks** are installed to each agent's config directory
-2. When an agent session starts, a new JSONL file is created in `.sessions/`
-3. All events (prompts, tool calls, responses) are appended to the session file
-4. Git branch changes are tracked automatically
+- macOS or Linux, x64 or arm64 (no Windows or Alpine/musl build yet)
+- `git` available on your PATH — the CLI shells out to git at runtime
+- If installing via NPM or from source: `Node.js 18 or later`
+
+## Supported Agents
+
+| Agent       | Plugin Location             |
+| ----------- | --------------------------- |
+| Claude Code | `~/.claude/skills/assert/`  |
+| Cursor      | `~/.cursor/plugins/assert/` |
+
+- Support for Codex, Devin, OpenCode, Pi, Amp, and more is upcoming.
+- If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
 
 ## Commands
 
@@ -40,48 +96,6 @@ assert status               # Show current status
 assert help                 # Show help
 ```
 
-## Supported Agents
+## License
 
-- **claude-code** - Claude Code CLI
-- **cursor** - Cursor IDE
-- **codex** - OpenAI Codex CLI
-
-## Example
-
-```bash
-$ assert sessions
-
-[assert] Found 2 session(s):
-
-  [ACTIVE] abc123-xyz
-           source: claude-code | 5 turns | 12 tool calls | 3 files
-           started: 2024-01-15T10:30:00Z
-           branches: main, feature/auth
-
-  [ended] def456-uvw
-           source: cursor      | 3 turns | 8 tool calls | 1 files
-           started: 2024-01-15T09:00:00Z
-
-$ assert show abc123-xyz
-
-Session: abc123-xyz
-Source: claude-code
-Started: 2024-01-15T10:30:00Z
-Branches: main, feature/auth
-Turns: 5
-Tool Calls: 12
-Files Modified: src/auth.ts, src/login.ts, tests/auth.test.ts
-
-Events:
--------
-10:30:00 [session_start] cwd=/project, branch=main
-10:30:05 [human] "Add error handling to the login function"
-10:30:06 [assistant_start] model=claude-sonnet-4-20250514
-10:30:07 [tool_call] Read({"file_path": "/project/src/login.ts"})
-...
-```
-
-## Storage
-
-- **Sessions**: `.sessions/<session-id>.jsonl`
-- Each line is a JSON event (session_start, human_turn, tool_call, etc.)
+This repository is licensed under the [MIT License](https://github.com/assert-labs/cli/blob/main/LICENSE)
