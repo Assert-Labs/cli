@@ -1,0 +1,14 @@
+.github/workflows/release.yml
+  h_a0e615773b4470 8-9,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "25d6215e126426318faea687498c8d214f7369ff",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
