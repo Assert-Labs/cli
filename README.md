@@ -94,8 +94,24 @@ assert install [agent]      # Install hooks globally (all agents if none specifi
 assert sessions             # List sessions in current directory
 assert show <session-id>    # Show session details
 assert status               # Show current status
+assert disable              # Pause capture (hooks stay installed)
+assert enable               # Resume capture
 assert help                 # Show help
 ```
+
+## Controlling Capture
+
+Session data is written into a repo's `.sessions/` as the agent works, so it
+shows up in `git status` like any other file — you stage and commit it yourself.
+
+- **Skip files:** add a `.assertignore` to the repo root (gitignore-style
+  patterns, e.g. `dist/`, `*.log`). Changes that only touch ignored paths won't
+  trigger capture or appear in session data.
+- **Turn off persistently:** `assert disable` pauses capture (hooks stay
+  installed) until you run `assert enable`. `assert status` shows the current
+  state.
+- **Turn off for one session:** set `ASSERT_DISABLE=1` in the environment your
+  agent runs in.
 
 ## License
 
