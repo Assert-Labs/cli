@@ -17,6 +17,7 @@ import {
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
+  skillMd,
 } from './plugins';
 import {
   listSessionFiles,
@@ -152,9 +153,19 @@ function writePlugin(
   fs.writeFileSync(path.join(hooksDir, 'hooks.json'), files.hooksJson + '\n');
 }
 
+// Write the shared Agent Skill into a plugin's skills/assert/ directory.
+function writeSkill(pluginDir: string): void {
+  const skillDir = path.join(pluginDir, 'skills', 'assert');
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMd());
+}
+
 function installClaudeCodePlugin(home: string): void {
+  const dir = claudePluginDir(home);
   const claudeVersion = detectClaudeCodeVersion();
-  writePlugin(claudePluginDir(home), '.claude-plugin', generateClaudeCodePlugin(VERSION, claudeVersion));
+  writePlugin(dir, '.claude-plugin', generateClaudeCodePlugin(VERSION, claudeVersion));
+  // Claude treats ~/.claude/skills/assert itself as the skill folder.
+  fs.writeFileSync(path.join(dir, 'SKILL.md'), skillMd());
   const ver = claudeVersion ? `Claude Code ${claudeVersion}` : 'Claude Code (version undetected)';
   log(`Installed Claude Code plugin to ~/.claude/skills/assert for ${ver} (auto-loads as assert@skills-dir)`);
 }
@@ -167,7 +178,9 @@ function installCursorPlugin(home: string): void {
   } catch {
     /* nothing to clean up */
   }
-  writePlugin(cursorPluginDir(home), '.cursor-plugin', generateCursorPlugin(VERSION));
+  const dir = cursorPluginDir(home);
+  writePlugin(dir, '.cursor-plugin', generateCursorPlugin(VERSION));
+  writeSkill(dir);
   log('Installed Cursor plugin to ~/.cursor/plugins/local/assert');
 }
 

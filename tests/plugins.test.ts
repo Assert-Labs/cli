@@ -10,6 +10,7 @@ import {
   cursorPluginDir,
   generateClaudeCodePlugin,
   generateCursorPlugin,
+  skillMd,
 } from '../src/plugins';
 
 describe('plugins', () => {
@@ -28,6 +29,14 @@ describe('plugins', () => {
     expect(hooks.hooks.sessionStart[0].command).toContain('hook cursor sessionStart');
     expect(hooks.hooks.afterFileEdit[0].command).toContain('hook cursor afterFileEdit');
     expect(JSON.parse(pluginJson).version).toBe('1.2.3');
+  });
+
+  it('ships a standard Agent Skill conveying that .sessions/ is intentional', () => {
+    const skill = skillMd();
+    expect(skill).toMatch(/^---\nname: assert\n/);
+    expect(skill).toContain('.sessions/');
+    expect(skill.toLowerCase()).toContain('commit');
+    expect(skill.toLowerCase()).toContain('enabled');
   });
 
   it('Claude Code plugin gates version-specific events', () => {

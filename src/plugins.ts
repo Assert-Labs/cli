@@ -87,6 +87,30 @@ export function generateClaudeCodePlugin(
   return { pluginJson, hooksJson: JSON.stringify({ hooks }, null, 2) };
 }
 
+// Agent-agnostic context so any agent understands the .sessions/ directory
+// Assert maintains. Shipped as an Agent Skill (see skillMd).
+const AGENT_GUIDANCE = `This project uses Assert (https://github.com/Assert-Labs/cli) to capture AI coding-agent
+sessions. While Assert is enabled, your session is recorded to JSONL files under a
+\`.sessions/\` directory at the repository root.
+
+- This capture is intentional. \`.sessions/\` files are part of the project's
+  history — do not delete or ignore them, and don't treat them as stray output.
+- When \`.sessions/\` changes appear, include them in your commit alongside the
+  related code (e.g. \`git add -A\` or \`git add .sessions\`). They appear only
+  while Assert is enabled; capture is paused with \`assert disable\`.`;
+
+// An Agent Skill (SKILL.md) — an open standard adopted across coding agents
+// (Claude Code, Cursor, and others) — so one file serves any of them.
+export function skillMd(): string {
+  return `---
+name: assert
+description: Explains the .sessions/ directory created by Assert session capture. Use when a repository contains a .sessions/ directory or when staging or committing changes, so session files are kept and committed with the code.
+---
+
+${AGENT_GUIDANCE}
+`;
+}
+
 export function generateCursorPlugin(version: string): {
   pluginJson: string;
   hooksJson: string;
