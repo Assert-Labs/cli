@@ -29,8 +29,8 @@ describe('boundaries', () => {
 
   afterEach(() => {
     process.env.HOME = originalHome;
-    fs.rmSync(testHome, { recursive: true, force: true });
-    fs.rmSync(testRepoDir, { recursive: true, force: true });
+    fs.rmSync(testHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    fs.rmSync(testRepoDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   describe('getBoundariesPath', () => {

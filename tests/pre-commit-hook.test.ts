@@ -20,7 +20,7 @@ describe('pre-commit hook', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(testDir, { recursive: true, force: true });
+    fs.rmSync(testDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   function ensurePreCommitHook(root: string): void {

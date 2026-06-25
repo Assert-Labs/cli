@@ -31,7 +31,7 @@ describe('session-index', () => {
 
   afterEach(() => {
     process.env.HOME = originalHome;
-    fs.rmSync(testHome, { recursive: true, force: true });
+    fs.rmSync(testHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   describe('paths', () => {

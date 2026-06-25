@@ -25,7 +25,7 @@ describe('repo-identity', () => {
 
   afterEach(() => {
     // Clean up
-    fs.rmSync(testDir, { recursive: true, force: true });
+    fs.rmSync(testDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   describe('generateRepoId', () => {

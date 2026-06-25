@@ -14,7 +14,6 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import { getOrCreateRepoId, removeRepoId } from '../src/repo-identity';
 import {
-  loadIndex,
   saveIndex,
   createEmptyIndex,
   indexSession,
@@ -22,13 +21,16 @@ import {
   endSession,
   findSessionsForFiles,
 } from '../src/session-index';
-import { recordBoundary, calculateAgentChanges, calculateHumanChanges } from '../src/boundaries';
+import {
+  recordBoundary,
+  calculateAgentChanges,
+  calculateHumanChanges,
+} from '../src/boundaries';
 import {
   createFileSnapshot,
   buildAttribution,
   calculateAgentContribution,
   findSessionLines,
-  hashLine,
 } from '../src/line-attribution';
 
 describe('attribution e2e', () => {
@@ -45,8 +47,14 @@ describe('attribution e2e', () => {
 
     // Initialize git repo
     execSync('git init', { cwd: testRepoDir, stdio: 'pipe' });
-    execSync('git config user.email "test@test.com"', { cwd: testRepoDir, stdio: 'pipe' });
-    execSync('git config user.name "Test"', { cwd: testRepoDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', {
+      cwd: testRepoDir,
+      stdio: 'pipe',
+    });
+    execSync('git config user.name "Test"', {
+      cwd: testRepoDir,
+      stdio: 'pipe',
+    });
   });
 
   afterEach(() => {
@@ -71,7 +79,13 @@ describe('attribution e2e', () => {
 
       // Start tracking session
       let index = createEmptyIndex();
-      index = indexSession(index, 'session-1', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-1',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
 
       // Record session start (no files yet)
       recordBoundary(repoId, 'session-1', 'start', testRepoDir, []);
@@ -86,15 +100,22 @@ function Component() {
   return <div>Hello World</div>;
 }
 
-export default Component;`
+export default Component;`,
       );
 
       // Track the file modification
-      index = indexFileModification(index, 'session-1', repoId, 'component.tsx');
+      index = indexFileModification(
+        index,
+        'session-1',
+        repoId,
+        'component.tsx',
+      );
       saveIndex(index);
 
       // Record session end
-      recordBoundary(repoId, 'session-1', 'end', testRepoDir, ['component.tsx']);
+      recordBoundary(repoId, 'session-1', 'end', testRepoDir, [
+        'component.tsx',
+      ]);
       index = endSession(index, 'session-1', new Date().toISOString());
       saveIndex(index);
 
@@ -136,7 +157,13 @@ export default Component;`
 
       // === Session 1: Agent creates file ===
       let index = createEmptyIndex();
-      index = indexSession(index, 'session-1', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-1',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       recordBoundary(repoId, 'session-1', 'start', testRepoDir, []);
 
       fs.writeFileSync(
@@ -147,7 +174,7 @@ export default Component;`
 
 export function subtract(a: number, b: number): number {
   return a - b;
-}`
+}`,
       );
 
       index = indexFileModification(index, 'session-1', repoId, 'utils.ts');
@@ -170,11 +197,13 @@ export function multiply(a: number, b: number): number {
 
 export function subtract(a: number, b: number): number {
   return a - b;
-}`
+}`,
       );
 
       // Calculate human changes before next session
-      const humanChanges = calculateHumanChanges(repoId, testRepoDir, ['utils.ts']);
+      const humanChanges = calculateHumanChanges(repoId, testRepoDir, [
+        'utils.ts',
+      ]);
       expect(humanChanges.has('utils.ts')).toBe(true);
 
       // === Build final attribution ===
@@ -208,9 +237,9 @@ export function subtract(a: number, b: number): number {
 
       // The multiply function lines should be human
       const multiplyLineNumbers = humanLines.map((l) => l.lineNumber);
-      const multiplyLines = finalContent.split('\n').filter((_, i) =>
-        multiplyLineNumbers.includes(i + 1)
-      );
+      const multiplyLines = finalContent
+        .split('\n')
+        .filter((_, i) => multiplyLineNumbers.includes(i + 1));
       expect(multiplyLines.some((l) => l.includes('multiply'))).toBe(true);
     });
   });
@@ -223,7 +252,13 @@ export function subtract(a: number, b: number): number {
 
       // === Session 1: Agent creates initial API ===
       let index = createEmptyIndex();
-      index = indexSession(index, 'session-1', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-1',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       recordBoundary(repoId, 'session-1', 'start', testRepoDir, []);
 
       fs.writeFileSync(
@@ -231,7 +266,7 @@ export function subtract(a: number, b: number): number {
         `export async function fetchUser(id: string) {
   const response = await fetch(\`/api/users/\${id}\`);
   return response.json();
-}`
+}`,
       );
 
       index = indexFileModification(index, 'session-1', repoId, 'api.ts');
@@ -242,7 +277,13 @@ export function subtract(a: number, b: number): number {
       const session1Changes = calculateAgentChanges(repoId, 'session-1');
 
       // === Session 2: Agent adds another function ===
-      index = indexSession(index, 'session-2', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-2',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       recordBoundary(repoId, 'session-2', 'start', testRepoDir, ['api.ts']);
 
       fs.writeFileSync(
@@ -255,7 +296,7 @@ export function subtract(a: number, b: number): number {
 export async function fetchPosts(userId: string) {
   const response = await fetch(\`/api/users/\${userId}/posts\`);
   return response.json();
-}`
+}`,
       );
 
       index = indexFileModification(index, 'session-2', repoId, 'api.ts');
@@ -295,9 +336,9 @@ export async function fetchPosts(userId: string) {
       expect(session2Lines.length).toBeGreaterThan(0);
 
       // Session 2 should include the fetchPosts function
-      const session2Content = finalContent.split('\n').filter((_, i) =>
-        session2Lines.includes(i + 1)
-      );
+      const session2Content = finalContent
+        .split('\n')
+        .filter((_, i) => session2Lines.includes(i + 1));
       expect(session2Content.some((l) => l.includes('fetchPosts'))).toBe(true);
     });
   });
@@ -311,19 +352,37 @@ export async function fetchPosts(userId: string) {
       let index = createEmptyIndex();
 
       // Session 1 modifies file A
-      index = indexSession(index, 'session-1', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-1',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       fs.writeFileSync(path.join(testRepoDir, 'fileA.ts'), 'content A');
       index = indexFileModification(index, 'session-1', repoId, 'fileA.ts');
       index = endSession(index, 'session-1', new Date().toISOString());
 
       // Session 2 modifies file B
-      index = indexSession(index, 'session-2', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-2',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       fs.writeFileSync(path.join(testRepoDir, 'fileB.ts'), 'content B');
       index = indexFileModification(index, 'session-2', repoId, 'fileB.ts');
       index = endSession(index, 'session-2', new Date().toISOString());
 
       // Session 3 modifies both files
-      index = indexSession(index, 'session-3', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-3',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       fs.appendFileSync(path.join(testRepoDir, 'fileA.ts'), '\nmore content A');
       fs.appendFileSync(path.join(testRepoDir, 'fileB.ts'), '\nmore content B');
       index = indexFileModification(index, 'session-3', repoId, 'fileA.ts');
@@ -351,7 +410,13 @@ export async function fetchPosts(userId: string) {
 
       // Agent creates functions
       let index = createEmptyIndex();
-      index = indexSession(index, 'session-1', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-1',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       recordBoundary(repoId, 'session-1', 'start', testRepoDir, []);
 
       const originalContent = `function alpha() {
@@ -387,7 +452,10 @@ function beta() {
       fs.writeFileSync(testFile, reorderedContent);
 
       // Build attribution with reordered content
-      const reorderedSnapshot = createFileSnapshot('functions.ts', reorderedContent);
+      const reorderedSnapshot = createFileSnapshot(
+        'functions.ts',
+        reorderedContent,
+      );
 
       const history = [
         {
@@ -426,7 +494,13 @@ function beta() {
 
       // Agent session changes DEBUG to true
       let index = createEmptyIndex();
-      index = indexSession(index, 'session-1', repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        'session-1',
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       recordBoundary(repoId, 'session-1', 'start', testRepoDir, ['config.ts']);
 
       fs.writeFileSync(testFile, 'export const DEBUG = true;');
@@ -442,11 +516,16 @@ function beta() {
       fs.writeFileSync(testFile, initialContent);
 
       // Check current state - human changes show the revert
-      const humanChanges = calculateHumanChanges(repoId, testRepoDir, ['config.ts']);
+      const humanChanges = calculateHumanChanges(repoId, testRepoDir, [
+        'config.ts',
+      ]);
       expect(humanChanges.size).toBeGreaterThan(0);
 
       // Build attribution on final state
-      const finalSnapshot = createFileSnapshot('config.ts', fs.readFileSync(testFile, 'utf-8'));
+      const finalSnapshot = createFileSnapshot(
+        'config.ts',
+        fs.readFileSync(testFile, 'utf-8'),
+      );
 
       const history = [
         {
@@ -482,7 +561,13 @@ function beta() {
       const sessionId = 'session-1';
       const turnId = 'turn-abc123';
 
-      index = indexSession(index, sessionId, repoId, testRepoDir, new Date().toISOString());
+      index = indexSession(
+        index,
+        sessionId,
+        repoId,
+        testRepoDir,
+        new Date().toISOString(),
+      );
       recordBoundary(repoId, sessionId, 'start', testRepoDir, []);
 
       // Agent creates feature based on prompt
@@ -492,7 +577,7 @@ function beta() {
         `// Feature: User authentication
 export function login(username: string, password: string) {
   // TODO: implement
-}`
+}`,
       );
 
       index = indexFileModification(index, sessionId, repoId, 'feature.ts');
@@ -503,7 +588,10 @@ export function login(username: string, password: string) {
       const agentChanges = calculateAgentChanges(repoId, sessionId);
 
       // Build attribution with turn ID
-      const snapshot = createFileSnapshot('feature.ts', fs.readFileSync(testFile, 'utf-8'));
+      const snapshot = createFileSnapshot(
+        'feature.ts',
+        fs.readFileSync(testFile, 'utf-8'),
+      );
       const history = [
         {
           source: 'agent' as const,
@@ -518,7 +606,7 @@ export function login(username: string, password: string) {
 
       // Find a specific line
       const loginLine = attribution.find((a) =>
-        snapshot.lines[a.lineNumber - 1]?.content.includes('login')
+        snapshot.lines[a.lineNumber - 1]?.content.includes('login'),
       );
 
       expect(loginLine).toBeDefined();

@@ -1,0 +1,12 @@
+{
+  // Type-checks the whole repo (src + tests) in one pass. The base tsconfig
+  // scopes `include` to src/** (and emits declarations for the build), so it
+  // never sees tests/. This config extends it, widens the root to the repo,
+  // and disables emit — it exists purely for `pnpm typecheck`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}

@@ -30,7 +30,7 @@ import {
   ensureSessionsDir,
 } from '../session-index';
 import { recordBoundary, calculateAgentChanges } from '../boundaries';
-import { type SessionStartEvent } from '../schema';
+import { type SessionEvent, type SessionStartEvent } from '../schema';
 
 /** A single repo touched by a session. */
 export interface TouchedRepo {
@@ -133,9 +133,9 @@ function getCentralSessionWriter(sessionId: string): SessionWriter {
   return createSessionWriter(sessionId, getSessionsDir(), { direct: true });
 }
 
-export function writeEvent(sessionId: string, event: Record<string, unknown>): void {
+export function writeEvent(sessionId: string, event: SessionEvent): void {
   const writer = getCentralSessionWriter(sessionId);
-  writer.writeEvent(event as any);
+  writer.writeEvent(event);
   writer.close();
 }
 
