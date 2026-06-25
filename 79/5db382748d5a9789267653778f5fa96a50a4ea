@@ -1,0 +1,30 @@
+tests/session-sync.test.ts
+  s_40cae84f7d4f12::t_eb785d5f616824 18
+  s_40cae84f7d4f12::t_534a6deb24d1e5 111-120
+  s_40cae84f7d4f12::t_380a3942d7cd64 1-17,19-110,121-129
+README.md
+  s_40cae84f7d4f12::t_03b59ef47f88f4 97-98
+  s_40cae84f7d4f12::t_e3330ea1ea2dae 102-109
+  s_40cae84f7d4f12::t_08ef7b0876cdab 110-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "795db382748d5a9789267653778f5fa96a50a4ea",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_40cae84f7d4f12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "061f9704-6e23-47bd-88ec-a3a6a82a4129",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
