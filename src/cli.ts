@@ -166,8 +166,7 @@ function installClaudeCodePlugin(home: string): void {
   writePlugin(dir, '.claude-plugin', generateClaudeCodePlugin(VERSION, claudeVersion));
   // Claude treats ~/.claude/skills/assert itself as the skill folder.
   fs.writeFileSync(path.join(dir, 'SKILL.md'), skillMd());
-  const ver = claudeVersion ? `Claude Code ${claudeVersion}` : 'Claude Code (version undetected)';
-  log(`Installed Claude Code plugin to ~/.claude/skills/assert for ${ver} (auto-loads as assert@skills-dir)`);
+  log('✓ Claude Code');
 }
 
 function installCursorPlugin(home: string): void {
@@ -181,7 +180,7 @@ function installCursorPlugin(home: string): void {
   const dir = cursorPluginDir(home);
   writePlugin(dir, '.cursor-plugin', generateCursorPlugin(VERSION));
   writeSkill(dir);
-  log('Installed Cursor plugin to ~/.cursor/plugins/local/assert');
+  log('✓ Cursor');
 }
 
 async function cmdInstall(agent?: string): Promise<void> {
@@ -309,21 +308,16 @@ async function cmdInstall(agent?: string): Promise<void> {
     return;
   }
 
-  // Install plugins for each agent
-  const installed: string[] = [];
+  // Install plugins (each bundles the capture hooks + the guidance skill).
   for (const a of agentsToInstall) {
     if (a === 'claude-code') {
       installClaudeCodePlugin(home);
-      installed.push('claude-code');
     } else if (a === 'cursor') {
       installCursorPlugin(home);
-      installed.push('cursor');
     }
   }
 
-  // Summary
   console.log('');
-  log(`Plugins installed for: ${installed.join(', ')}`);
   log('Restart your agent or run /reload-plugins to activate.');
 }
 
