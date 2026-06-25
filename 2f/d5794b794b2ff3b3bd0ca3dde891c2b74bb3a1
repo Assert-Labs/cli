@@ -1,0 +1,30 @@
+AGENTS.md
+  s_40cae84f7d4f12::t_976b0f85455224 1-45
+README.md
+  h_a0e615773b4470 18
+CLAUDE.md
+  h_a0e615773b4470 1
+.github/workflows/ci.yml
+  s_40cae84f7d4f12::t_7fbc754c0c5e6e 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "2fd5794b794b2ff3b3bd0ca3dde891c2b74bb3a1",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_40cae84f7d4f12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "061f9704-6e23-47bd-88ec-a3a6a82a4129",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
