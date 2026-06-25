@@ -1,0 +1,21 @@
+src/cli.ts
+  s_40cae84f7d4f12::t_c4c29a230bfffb 311
+  s_40cae84f7d4f12::t_3bcc945de86455 169
+  s_40cae84f7d4f12::t_e028c373c9db54 183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "8e4cec933c75a97c1a98da8de15597962af13092",
+  "prompts": {},
+  "sessions": {
+    "s_40cae84f7d4f12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "061f9704-6e23-47bd-88ec-a3a6a82a4129",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
