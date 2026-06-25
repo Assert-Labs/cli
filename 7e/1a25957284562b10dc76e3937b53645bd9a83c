@@ -1,0 +1,44 @@
+tests/pre-commit-hook.test.ts
+  s_40cae84f7d4f12::t_b89450c465057f 23
+tests/boundaries.test.ts
+  s_40cae84f7d4f12::t_b89450c465057f 32-33
+tests/cli.test.ts
+  s_40cae84f7d4f12::t_b89450c465057f 17
+src/hooks/session-recorder.ts
+  s_40cae84f7d4f12::t_b2f6ea3478866f 136,138
+  s_40cae84f7d4f12::t_de971a0ad922ed 33
+tests/git-watcher.test.ts
+  s_40cae84f7d4f12::t_b89450c465057f 32
+tests/session-writer.test.ts
+  s_40cae84f7d4f12::t_b89450c465057f 33
+tsconfig.test.json
+  h_a0e615773b4470 2-5
+  s_40cae84f7d4f12::t_001a13b21364e9 1,6-12
+tests/session-index.test.ts
+  s_40cae84f7d4f12::t_b89450c465057f 34
+tests/repo-identity.test.ts
+  s_40cae84f7d4f12::t_b89450c465057f 28
+tests/attribution-e2e.test.ts
+  h_a0e615773b4470 25-28,52,56,87,103,111,117,165,177,200,205,260,269,285,299,360,372,384,418,457,502,520,527,569,580,593,609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "7e1a25957284562b10dc76e3937b53645bd9a83c",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_40cae84f7d4f12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "061f9704-6e23-47bd-88ec-a3a6a82a4129",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
