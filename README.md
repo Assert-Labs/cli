@@ -79,10 +79,10 @@ assert install
 
 ## Supported Agents
 
-| Agent       | Plugin Location             |
-| ----------- | --------------------------- |
-| Claude Code | `~/.claude/skills/assert/`  |
-| Cursor      | `~/.cursor/plugins/assert/` |
+| Agent       | Plugin Location                   |
+| ----------- | --------------------------------- |
+| Claude Code | `~/.claude/skills/assert/`        |
+| Cursor      | `~/.cursor/plugins/local/assert/` |
 
 - Support for Codex, Devin, OpenCode, Pi, Amp, and more is upcoming.
 - If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
