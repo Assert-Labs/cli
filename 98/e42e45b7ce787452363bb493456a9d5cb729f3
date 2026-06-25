@@ -1,0 +1,14 @@
+package.json
+  h_a0e615773b4470 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "98e42e45b7ce787452363bb493456a9d5cb729f3",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
