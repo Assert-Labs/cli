@@ -1,0 +1,20 @@
+docs/agent-trace.md
+  s_40cae84f7d4f12::t_6b109872cfb684 27-42
+  s_40cae84f7d4f12::t_099cb41e6956e1 1-26,43-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "5aa20985122363e4842dc2d0bbe118dba2892459",
+  "prompts": {},
+  "sessions": {
+    "s_40cae84f7d4f12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "061f9704-6e23-47bd-88ec-a3a6a82a4129",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
