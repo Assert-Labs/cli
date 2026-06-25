@@ -12,8 +12,10 @@ import {
   saveState,
   startSession,
   endSession,
+  syncSession,
   recordFileEdit,
   writeEvent,
+  captureDisabled,
 } from './session-recorder';
 import {
   type ToolCallEvent,
@@ -89,8 +91,10 @@ export function handleSessionEnd(data: ClaudeCodeSessionEnd): void {
 export function handleStop(data: ClaudeCodeSessionEnd): void {
   const state = loadState(data.session_id, SOURCE);
   if (!state) return;
-  endSession(state, 'aborted', data.transcript_path);
-  console.error(`[assert] Session aborted: ${data.session_id}`);
+  // End of a turn, not the session: sync changes so far, keep the session open.
+  state.currentTurnId = null;
+  saveState(state);
+  syncSession(state, data.transcript_path);
 }
 
 export function handlePreToolUse(data: ClaudeCodePreToolUse): void {
@@ -197,6 +201,7 @@ export function handleMessageDisplay(data: Record<string, unknown>): void {
 }
 
 export async function processHook(hookType: string, input: string): Promise<void> {
+  if (captureDisabled()) return;
   const data = JSON.parse(input);
 
   switch (hookType) {

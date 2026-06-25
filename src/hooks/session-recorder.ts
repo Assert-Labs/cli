@@ -18,7 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createSessionWriter, type SessionWriter } from '../session-writer';
-import { findGitRoot, getGitState } from '../git-watcher';
+import { findGitRoot, getGitState, getChangedFiles, fileAtRef } from '../git-watcher';
 import { getOrCreateRepoId } from '../repo-identity';
 import {
   loadIndex,
@@ -29,14 +29,38 @@ import {
   getSessionsDir,
   ensureSessionsDir,
 } from '../session-index';
-import { recordBoundary, calculateAgentChanges } from '../boundaries';
+import { recordBoundary } from '../boundaries';
 import { type SessionEvent, type SessionStartEvent } from '../schema';
 
 /** A single repo touched by a session. */
 export interface TouchedRepo {
   repoId: string;
   gitRoot: string;
-  filesModified: string[]; // Relative paths within this repo
+  startRef?: string; // HEAD when first tracked — the attribution baseline.
+}
+
+function disabledFlagPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  return path.join(home, '.assert', 'disabled');
+}
+
+/** Capture is off when ASSERT_DISABLE is set or `assert disable` was run. */
+export function captureDisabled(): boolean {
+  return !!process.env.ASSERT_DISABLE || fs.existsSync(disabledFlagPath());
+}
+
+export function setCaptureDisabled(disabled: boolean): void {
+  const flag = disabledFlagPath();
+  if (disabled) {
+    fs.mkdirSync(path.dirname(flag), { recursive: true });
+    fs.writeFileSync(flag, '');
+  } else {
+    try {
+      fs.unlinkSync(flag);
+    } catch {
+      /* already enabled */
+    }
+  }
 }
 
 export interface SessionState {
@@ -185,40 +209,30 @@ function distillTranscript(srcPath: string, destPath: string, source: string): b
   }
 }
 
-/**
- * Ensure a never-blocking pre-commit hook is installed in a git repo so it
- * attaches session data on commit. Appends to any existing hook.
- */
-function ensurePreCommitHook(gitRoot: string): void {
-  const hooksDir = path.join(gitRoot, '.git', 'hooks');
-  const hookPath = path.join(hooksDir, 'pre-commit');
-  const hookMarker = 'Assert: attach session data';
-
-  const safeHookCommand = `
-# Assert: attach session data to commits (never blocks)
-if [ -x "$HOME/.assert/bin/assert" ]; then
-  "$HOME/.assert/bin/assert" pre-commit 2>/dev/null || true
-fi`;
-
+/** Patterns from a repo's `.assertignore` (gitignore-ish: `*`, `**`, trailing `/`). */
+function loadAssertIgnore(gitRoot: string): RegExp[] {
   try {
-    if (!fs.existsSync(hooksDir)) {
-      fs.mkdirSync(hooksDir, { recursive: true });
-    }
-    // Don't touch symlinked hooks (e.g. husky) — could break other tools.
-    if (fs.existsSync(hookPath) && fs.lstatSync(hookPath).isSymbolicLink()) {
-      return;
-    }
-    if (fs.existsSync(hookPath)) {
-      const content = fs.readFileSync(hookPath, 'utf-8');
-      if (content.includes(hookMarker)) return; // Already installed
-      fs.appendFileSync(hookPath, safeHookCommand + '\n');
-    } else {
-      fs.writeFileSync(hookPath, `#!/bin/sh${safeHookCommand}\n`);
-      fs.chmodSync(hookPath, 0o755);
-    }
+    return fs
+      .readFileSync(path.join(gitRoot, '.assertignore'), 'utf-8')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+      .map((glob) => {
+        const body = glob
+          .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .split('**')
+          .map((s) => s.replace(/\*/g, '[^/]*'))
+          .join('.*');
+        return new RegExp('^' + body + (glob.endsWith('/') ? '' : '(/|$)'));
+      });
   } catch {
-    // Silent — never break the user's repo.
+    return [];
   }
+}
+
+function isIgnored(rel: string, patterns: RegExp[]): boolean {
+  const base = rel.split('/').pop() ?? rel;
+  return patterns.some((re) => re.test(rel) || re.test(base));
 }
 
 // ------------------------------------------------------------------
@@ -226,9 +240,9 @@ fi`;
 // ------------------------------------------------------------------
 
 /**
- * Start tracking a repo for the active session (idempotent): indexes the
- * session under the repo, records a session-start boundary, and installs the
- * pre-commit hook. Returns the tracked repo, or null if `gitRoot` isn't a repo.
+ * Start tracking a repo for the active session (idempotent): indexes the session
+ * under the repo and records its baseline ref. Returns the tracked repo, or null
+ * if `gitRoot` isn't a repo.
  */
 export function ensureRepoTracked(
   state: SessionState,
@@ -241,49 +255,32 @@ export function ensureRepoTracked(
   if (!repoInfo) return null;
   const { repoId } = repoInfo;
 
-  // Index the session under this repo (idempotent across repos).
   let index = loadIndex();
   index = indexSession(index, state.sessionId, repoId, gitRoot, new Date().toISOString());
   saveIndex(index);
 
-  // Record a session-start boundary (files snapshotted as modified, so empty).
-  let gitRef: string | undefined;
+  let startRef: string | undefined;
   try {
-    gitRef = getGitState(gitRoot).ref;
+    startRef = getGitState(gitRoot).ref;
   } catch {
     // Git state unavailable
   }
-  recordBoundary(repoId, state.sessionId, 'start', gitRoot, [], gitRef);
 
-  ensurePreCommitHook(gitRoot);
-
-  const tracked: TouchedRepo = { repoId, gitRoot, filesModified: [] };
+  const tracked: TouchedRepo = { repoId, gitRoot, startRef };
   state.repos[gitRoot] = tracked;
   return tracked;
 }
 
 /**
- * Record that the agent edited a file. Resolves the file's own repo (which may
- * differ from any other file's), tracks it, and indexes the modification.
- * Returns the path relative to that repo, or null if the file isn't in a repo.
+ * Record that the agent touched a file: track its repo (which may differ from
+ * other files') so we sync that repo later. Returns the repo-relative path for
+ * transcript metadata, or null if the file isn't in a repo.
  */
 export function recordFileEdit(state: SessionState, filePath: string): string | null {
   const fileGitRoot = findGitRoot(path.dirname(filePath));
   if (!fileGitRoot) return null;
-
-  const repo = ensureRepoTracked(state, fileGitRoot);
-  if (!repo) return null;
-
-  const relativePath = path.relative(fileGitRoot, filePath);
-  if (!repo.filesModified.includes(relativePath)) {
-    repo.filesModified.push(relativePath);
-  }
-
-  let index = loadIndex();
-  index = indexFileModification(index, state.sessionId, repo.repoId, relativePath);
-  saveIndex(index);
-
-  return relativePath;
+  if (!ensureRepoTracked(state, fileGitRoot)) return null;
+  return path.relative(fileGitRoot, filePath);
 }
 
 /**
@@ -337,31 +334,53 @@ export function startSession(
   return state;
 }
 
-/**
- * Record an end boundary and copy `sessionFile` into the `.sessions/` of every
- * repo it touched where the agent actually changed files.
- */
-export function attributeSessionToRepos(state: SessionState, sessionFile: string): void {
-  for (const repo of Object.values(state.repos)) {
-    recordBoundary(repo.repoId, state.sessionId, 'end', repo.gitRoot, repo.filesModified);
-
-    const agentChanges = calculateAgentChanges(repo.repoId, state.sessionId);
-    const hasChanges = Array.from(agentChanges.values()).some(
-      (c) => c.added.size > 0 || c.removed.size > 0
-    );
-
-    if (hasChanges) {
-      copySessionToRepo(sessionFile, state.sessionId, repo.gitRoot);
-      console.error(`[assert] Session ${state.sessionId} attributed to ${repo.gitRoot}`);
-    }
-  }
+// Prefer the distilled agent transcript (full prompts + reasoning + tool calls);
+// fall back to our stitched central log.
+function resolveSessionFile(state: SessionState, transcriptPath?: string): string {
+  const stitched = path.join(getSessionsDir(), `${state.sessionId}.jsonl`);
+  if (!transcriptPath) return stitched;
+  const distilled = path.join(getSessionsDir(), `${state.sessionId}.distilled.jsonl`);
+  return distillTranscript(transcriptPath, distilled, state.source) ? distilled : stitched;
 }
 
 /**
- * End a session: write the session_end event, mark it ended, and attribute/copy
- * to every touched repo. The data written into each repo's `.sessions/` is the
- * agent's own transcript (distilled) when available — that's the full prompts +
- * reasoning + tool calls — falling back to our stitched central log otherwise.
+ * Sync the session into one repo: find what the agent changed there via git
+ * (any change, however made), honoring `.assertignore`. If anything changed,
+ * index those files and copy the session data into `<repo>/.sessions/`. On
+ * `final`, also record start/end attribution boundaries for `assert blame`.
+ */
+function syncRepo(state: SessionState, repo: TouchedRepo, sessionFile: string, final: boolean): void {
+  const ignore = loadAssertIgnore(repo.gitRoot);
+  const changed = getChangedFiles(repo.gitRoot, repo.startRef).filter((f) => !isIgnored(f, ignore));
+  if (changed.length === 0) return;
+
+  let index = loadIndex();
+  for (const f of changed) index = indexFileModification(index, state.sessionId, repo.repoId, f);
+  saveIndex(index);
+
+  if (final) {
+    const baseline = new Map<string, string>();
+    for (const f of changed) baseline.set(f, fileAtRef(repo.gitRoot, repo.startRef, f) ?? '');
+    recordBoundary(repo.repoId, state.sessionId, 'start', repo.gitRoot, changed, repo.startRef, baseline);
+    recordBoundary(repo.repoId, state.sessionId, 'end', repo.gitRoot, changed);
+  }
+
+  copySessionToRepo(sessionFile, state.sessionId, repo.gitRoot);
+}
+
+/**
+ * Materialize the session into every touched repo with changes. Called at each
+ * turn boundary so session data lands in the working tree (visible in
+ * `git status`) before the developer commits — never injected at commit time.
+ */
+export function syncSession(state: SessionState, transcriptPath?: string): void {
+  const sessionFile = resolveSessionFile(state, transcriptPath);
+  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, false);
+}
+
+/**
+ * End a session: write session_end, mark it ended, and do a final sync that also
+ * records attribution boundaries.
  */
 export function endSession(
   state: SessionState,
@@ -379,16 +398,8 @@ export function endSession(
   index = endSessionIndex(index, state.sessionId, new Date().toISOString());
   saveIndex(index);
 
-  // Prefer the distilled agent transcript; fall back to the stitched log.
-  let sessionFile = path.join(getSessionsDir(), `${state.sessionId}.jsonl`);
-  if (transcriptPath) {
-    const distilled = path.join(getSessionsDir(), `${state.sessionId}.distilled.jsonl`);
-    if (distillTranscript(transcriptPath, distilled, state.source)) {
-      sessionFile = distilled;
-    }
-  }
-
-  attributeSessionToRepos(state, sessionFile);
+  const sessionFile = resolveSessionFile(state, transcriptPath);
+  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, true);
 
   clearState(state.sessionId, state.source);
 }

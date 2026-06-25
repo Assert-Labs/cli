@@ -84,16 +84,24 @@ export function recordBoundary(
   type: 'start' | 'end',
   gitRoot: string,
   filePaths: string[],
-  gitRef?: string
+  gitRef?: string,
+  // When given, snapshot from this content instead of the file on disk — used to
+  // record a start boundary from a file's pre-session (baseline) state.
+  contentByPath?: Map<string, string>
 ): SessionBoundary {
   const store = loadBoundaries(repoId);
 
   const files: FileSnapshot[] = [];
   for (const filePath of filePaths) {
     const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(gitRoot, filePath);
-    if (fs.existsSync(absolutePath)) {
-      const content = fs.readFileSync(absolutePath, 'utf-8');
-      const relativePath = path.relative(gitRoot, absolutePath);
+    const relativePath = path.relative(gitRoot, absolutePath);
+    let content: string | undefined;
+    if (contentByPath) {
+      content = contentByPath.get(relativePath);
+    } else if (fs.existsSync(absolutePath)) {
+      content = fs.readFileSync(absolutePath, 'utf-8');
+    }
+    if (content !== undefined) {
       files.push(createFileSnapshot(relativePath, content));
     }
   }
@@ -169,28 +177,19 @@ export function calculateHumanChanges(
     const currentContent = fs.readFileSync(absolutePath, 'utf-8');
     const currentSnapshot = createFileSnapshot(relativePath, currentContent);
 
-    // Find this file in the last end boundary
     const lastSnapshot = lastEnd?.files.find((f) => f.filePath === relativePath);
 
     if (!lastSnapshot) {
-      // File is entirely new since last session end - all lines are human additions
       const added = new Set(currentSnapshot.lines.map((l) => l.hash));
       changes.set(relativePath, { added, removed: new Set() });
     } else {
-      // Diff the snapshots
       const diffs = diffSnapshots(lastSnapshot, currentSnapshot);
-
       const added = new Set<string>();
       const removed = new Set<string>();
-
       for (const diff of diffs) {
-        if (diff.type === 'added') {
-          added.add(diff.hash);
-        } else if (diff.type === 'removed') {
-          removed.add(diff.hash);
-        }
+        if (diff.type === 'added') added.add(diff.hash);
+        else if (diff.type === 'removed') removed.add(diff.hash);
       }
-
       if (added.size > 0 || removed.size > 0) {
         changes.set(relativePath, { added, removed });
       }

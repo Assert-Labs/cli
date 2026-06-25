@@ -16,9 +16,11 @@ import {
   saveState,
   startSession,
   endSession,
+  syncSession,
   recordFileEdit,
   writeEvent,
   findSessionIdForWorkspace,
+  captureDisabled,
 } from './session-recorder';
 import {
   type ToolCallEvent,
@@ -104,8 +106,10 @@ export function handleStop(data: CursorSessionEnd): void {
   if (!sessionId) return;
   const state = loadState(sessionId, SOURCE);
   if (!state) return;
-  endSession(state, 'aborted');
-  console.error(`[assert] Cursor session aborted: ${sessionId}`);
+  // End of a turn, not the session: sync changes so far, keep the session open.
+  state.currentTurnId = null;
+  saveState(state);
+  syncSession(state);
 }
 
 export function handlePreToolUse(data: CursorToolUse): void {
@@ -212,6 +216,7 @@ export function handleAfterFileEdit(data: CursorToolUse): void {
 }
 
 export async function processHook(hookType: string, input: string): Promise<void> {
+  if (captureDisabled()) return;
   const data = JSON.parse(input);
 
   switch (hookType) {

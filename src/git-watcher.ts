@@ -63,6 +63,47 @@ export function getGitState(gitRoot: string): GitState {
   return { branch: null, ref: headContent, isDetached: true };
 }
 
+function git(gitRoot: string, args: string): string {
+  try {
+    return execSync(`git ${args}`, { cwd: gitRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch {
+    return '';
+  }
+}
+
+/** Repo-relative files changed since `sinceRef` (committed + uncommitted). */
+export function getChangedFiles(gitRoot: string, sinceRef?: string): string[] {
+  const files = new Set<string>();
+  for (const line of git(gitRoot, 'status --porcelain --untracked-files=all').split('\n')) {
+    if (!line) continue;
+    let p = line.slice(3);
+    const rename = p.indexOf(' -> ');
+    if (rename !== -1) p = p.slice(rename + 4);
+    files.add(p.replace(/^"|"$/g, ''));
+  }
+  if (sinceRef && sinceRef !== 'unknown') {
+    for (const p of git(gitRoot, `diff --name-only ${sinceRef} HEAD`).split('\n')) {
+      if (p) files.add(p);
+    }
+  }
+  files.delete('');
+  return [...files].filter((f) => !f.startsWith('.sessions/'));
+}
+
+/** Content of a repo-relative file at `ref`, or null if it didn't exist there. */
+export function fileAtRef(gitRoot: string, ref: string | undefined, relPath: string): string | null {
+  if (!ref || ref === 'unknown') return null;
+  try {
+    return execSync(`git show "${ref}:${relPath}"`, {
+      cwd: gitRoot,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get the actual commit SHA that HEAD points to
  */

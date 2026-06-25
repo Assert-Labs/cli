@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { processHook, type AgentType } from './hooks/index';
+import { captureDisabled, setCaptureDisabled } from './hooks/session-recorder';
 import {
   listSessionFiles,
   readSessionEvents,
@@ -25,7 +26,7 @@ import {
   findSessionsForRepo,
   findSessionsForFiles,
 } from './session-index';
-import { calculateAgentChanges, getLastEndBoundary } from './boundaries';
+import { calculateAgentChanges } from './boundaries';
 import {
   createFileSnapshot,
   buildAttribution,
@@ -609,6 +610,7 @@ async function cmdStatus(): Promise<void> {
   }
 
   console.log('');
+  console.log(`Capture: ${captureDisabled() ? 'disabled (run `assert enable`)' : 'enabled'}`);
   console.log(`Assert version: ${VERSION}`);
   const stamp = readInstallStamp();
   if (!stamp) {
@@ -620,6 +622,16 @@ async function cmdStatus(): Promise<void> {
   } else {
     console.log(`Installed hooks: v${stamp.version} (up to date)`);
   }
+}
+
+function cmdDisable(): void {
+  setCaptureDisabled(true);
+  log('Capture disabled. Hooks stay installed; run `assert enable` to resume.');
+}
+
+function cmdEnable(): void {
+  setCaptureDisabled(false);
+  log('Capture enabled.');
 }
 
 /**
@@ -722,95 +734,6 @@ async function cmdBlame(filePath: string): Promise<void> {
 }
 
 /**
- * Pre-commit hook: attach relevant session data to staged files
- * CRITICAL: This must NEVER fail or block commits - all errors silently ignored
- */
-async function cmdPreCommit(): Promise<void> {
-  try {
-    const cwd = process.cwd();
-
-    const repoInfo = getRepoId(cwd);
-    if (!repoInfo) {
-      return;
-    }
-
-    const { repoId, gitRoot } = repoInfo;
-
-    // Get staged files
-    const { execSync } = await import('child_process');
-    let stagedFiles: string[];
-    try {
-      const output = execSync('git diff --cached --name-only', {
-        cwd: gitRoot,
-        encoding: 'utf-8',
-        timeout: 5000, // 5 second timeout
-      });
-      stagedFiles = output.trim().split('\n').filter(Boolean);
-    } catch {
-      return;
-    }
-
-    if (stagedFiles.length === 0) {
-      return;
-    }
-
-    // Find sessions that touched these files
-    const index = loadIndex();
-    const sessionIds = findSessionsForFiles(index, repoId, stagedFiles);
-
-    if (sessionIds.length === 0) {
-      return;
-    }
-
-    // Copy relevant session files to repo .sessions/
-    const sessionsDir = getSessionsDir();
-    const repoSessionsDir = path.join(gitRoot, '.sessions');
-
-    if (!fs.existsSync(repoSessionsDir)) {
-      fs.mkdirSync(repoSessionsDir, { recursive: true });
-    }
-
-    let copiedCount = 0;
-    for (const sessionId of sessionIds) {
-      const centralPath = path.join(sessionsDir, `${sessionId}.jsonl`);
-      const repoPath = path.join(repoSessionsDir, `${sessionId}.jsonl`);
-
-      if (fs.existsSync(centralPath)) {
-        // Check if there are actual agent changes for staged files
-        const agentChanges = calculateAgentChanges(repoId, sessionId);
-        const hasRelevantChanges = stagedFiles.some((f) => {
-          const changes = agentChanges.get(f);
-          return (
-            changes && (changes.added.size > 0 || changes.removed.size > 0)
-          );
-        });
-
-        if (hasRelevantChanges) {
-          fs.copyFileSync(centralPath, repoPath);
-          copiedCount++;
-        }
-      }
-    }
-
-    if (copiedCount > 0) {
-      // Stage the session files
-      try {
-        execSync(`git add "${repoSessionsDir}"`, {
-          cwd: gitRoot,
-          stdio: 'pipe',
-          timeout: 5000,
-        });
-      } catch {
-        // Silent failure - files copied but not staged
-      }
-    }
-  } catch {
-    // CRITICAL: Never throw, never block commits
-    // Silent failure is better than blocking user's work
-  }
-}
-
-/**
  * List all sessions (from central storage and current repo)
  */
 async function cmdSessionsAll(): Promise<void> {
@@ -876,19 +799,15 @@ Usage:
   assert sessions --all          List all sessions (central storage)
   assert show <session-id>       Show session details
   assert blame <file>            Show line-by-line agent attribution (like git blame)
-  assert pre-commit              Attach relevant session data to staged files
   assert status                  Show current status
+  assert disable                 Pause capture (hooks stay installed)
+  assert enable                  Resume capture
   assert help                    Show this help
 
 Supported agents:
   claude-code     Claude Code CLI
   cursor          Cursor IDE
   codex           OpenAI Codex CLI
-
-Git Integration:
-  Add to .git/hooks/pre-commit:
-    #!/bin/sh
-    ~/.assert/bin/assert pre-commit
 
 Examples:
   assert install                 # Install hooks for all agents
@@ -952,10 +871,17 @@ async function main(): Promise<void> {
       await cmdBlame(args[1]);
       break;
     case 'pre-commit':
-      await cmdPreCommit();
+      // No-op: retained so pre-commit hooks installed by older versions stay
+      // silent. Session data is now synced at turn boundaries, not on commit.
       break;
     case 'status':
       await cmdStatus();
+      break;
+    case 'disable':
+      cmdDisable();
+      break;
+    case 'enable':
+      cmdEnable();
       break;
     case 'help':
     case '--help':
