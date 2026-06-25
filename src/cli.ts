@@ -43,6 +43,54 @@ function error(msg: string): void {
   console.error(`[assert] error: ${msg}`);
 }
 
+function warn(msg: string): void {
+  console.error(`[assert] warning: ${msg}`);
+}
+
+// Injected at build time via esbuild `define` (see scripts/build.mjs). Falls
+// back to 'dev' when running from source (tsx), where no define is applied —
+// 'dev' builds intentionally never raise the stale-install notice.
+declare const __ASSERT_VERSION__: string;
+const VERSION: string =
+  typeof __ASSERT_VERSION__ === 'string' ? __ASSERT_VERSION__ : 'dev';
+
+interface InstallStamp {
+  version: string;
+  installedAt: string;
+}
+
+function installStampPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  return path.join(home, '.assert', 'install.json');
+}
+
+/**
+ * The version/time recorded at `assert install` — i.e. the binary the hooks
+ * actually invoke (~/.assert/bin/assert). Null if never installed.
+ */
+function readInstallStamp(): InstallStamp | null {
+  try {
+    return JSON.parse(
+      fs.readFileSync(installStampPath(), 'utf-8'),
+    ) as InstallStamp;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when the binary now running is newer than the installed copy the hooks
+ * use — e.g. after a `brew upgrade` without re-running `assert install`.
+ */
+function installIsStale(stamp: InstallStamp | null): boolean {
+  return (
+    VERSION !== 'dev' &&
+    stamp != null &&
+    typeof stamp.version === 'string' &&
+    stamp.version !== VERSION
+  );
+}
+
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     let data = '';
@@ -129,13 +177,20 @@ const CLAUDE_HOOK_EVENTS: Array<{ event: string; minVersion?: string }> = [
   { event: 'MessageDisplay', minVersion: '2.1.152' },
 ];
 
-function generateClaudeCodePlugin(claudeVersion: string | null): { pluginJson: string; hooksJson: string } {
-  const pluginJson = JSON.stringify({
-    name: 'assert',
-    description: 'Capture AI agent sessions for code attribution',
-    version: '0.1.0',
-    author: { name: 'Assert Labs' },
-  }, null, 2);
+function generateClaudeCodePlugin(claudeVersion: string | null): {
+  pluginJson: string;
+  hooksJson: string;
+} {
+  const pluginJson = JSON.stringify(
+    {
+      name: 'assert',
+      description: 'Capture AI agent sessions for code attribution',
+      version: VERSION,
+      author: { name: 'Assert Labs' },
+    },
+    null,
+    2,
+  );
 
   const hooks: Record<string, unknown> = {};
   for (const { event, minVersion } of CLAUDE_HOOK_EVENTS) {
@@ -145,7 +200,14 @@ function generateClaudeCodePlugin(claudeVersion: string | null): { pluginJson: s
       continue;
     }
     hooks[event] = [
-      { hooks: [{ type: 'command', command: `$HOME/.assert/bin/assert hook claude-code ${event}` }] },
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `$HOME/.assert/bin/assert hook claude-code ${event}`,
+          },
+        ],
+      },
     ];
   }
 
@@ -157,27 +219,35 @@ function generateClaudeCodePlugin(claudeVersion: string | null): { pluginJson: s
  * Generate Cursor plugin files
  */
 function generateCursorPlugin(): { pluginJson: string; hooksJson: string } {
-  const pluginJson = JSON.stringify({
-    name: 'assert',
-    description: 'Capture AI agent sessions for code attribution',
-    version: '0.1.0',
-    author: { name: 'Assert Labs' },
-    hooks: 'hooks/hooks.json',
-  }, null, 2);
+  const pluginJson = JSON.stringify(
+    {
+      name: 'assert',
+      description: 'Capture AI agent sessions for code attribution',
+      version: VERSION,
+      author: { name: 'Assert Labs' },
+      hooks: 'hooks/hooks.json',
+    },
+    null,
+    2,
+  );
 
   const cmd = (type: string) => `$HOME/.assert/bin/assert hook cursor ${type}`;
-  const hooksJson = JSON.stringify({
-    hooks: {
-      sessionStart: [{ command: cmd('sessionStart') }],
-      sessionEnd: [{ command: cmd('sessionEnd') }],
-      stop: [{ command: cmd('stop') }],
-      preToolUse: [{ command: cmd('preToolUse') }],
-      postToolUse: [{ command: cmd('postToolUse') }],
-      beforeSubmitPrompt: [{ command: cmd('beforeSubmitPrompt') }],
-      afterAgentResponse: [{ command: cmd('afterAgentResponse') }],
-      afterFileEdit: [{ command: cmd('afterFileEdit') }],
+  const hooksJson = JSON.stringify(
+    {
+      hooks: {
+        sessionStart: [{ command: cmd('sessionStart') }],
+        sessionEnd: [{ command: cmd('sessionEnd') }],
+        stop: [{ command: cmd('stop') }],
+        preToolUse: [{ command: cmd('preToolUse') }],
+        postToolUse: [{ command: cmd('postToolUse') }],
+        beforeSubmitPrompt: [{ command: cmd('beforeSubmitPrompt') }],
+        afterAgentResponse: [{ command: cmd('afterAgentResponse') }],
+        afterFileEdit: [{ command: cmd('afterFileEdit') }],
+      },
     },
-  }, null, 2);
+    null,
+    2,
+  );
 
   return { pluginJson, hooksJson };
 }
@@ -201,8 +271,12 @@ function installClaudeCodePlugin(): void {
   fs.writeFileSync(path.join(pluginMetaDir, 'plugin.json'), pluginJson + '\n');
   fs.writeFileSync(path.join(hooksDir, 'hooks.json'), hooksJson + '\n');
 
-  const ver = claudeVersion ? `Claude Code ${claudeVersion}` : 'Claude Code (version undetected)';
-  log(`Installed Claude Code plugin to ~/.claude/skills/assert for ${ver} (auto-loads as assert@skills-dir)`);
+  const ver = claudeVersion
+    ? `Claude Code ${claudeVersion}`
+    : 'Claude Code (version undetected)';
+  log(
+    `Installed Claude Code plugin to ~/.claude/skills/assert for ${ver} (auto-loads as assert@skills-dir)`,
+  );
 }
 
 /**
@@ -242,12 +316,42 @@ async function cmdInstall(agent?: string): Promise<void> {
   currentBin = fs.realpathSync(currentBin);
 
   // Check if we're running from the installed copy (~/.assert/bin/assert)
-  const isInstalledCopy = currentBin === destBin || currentBin.startsWith(assertDir);
+  const isInstalledCopy =
+    currentBin === destBin || currentBin.startsWith(assertDir);
+
+  // A single-executable (SEA) build is one self-contained binary with no sibling bin/assert.js or
+  // dist/cli.js. Detect it so we copy the executable itself rather than looking
+  // for the (nonexistent) two-file JS layout
+  let runningAsSea = false;
+  try {
+    runningAsSea = (await import('node:sea')).isSea();
+  } catch {
+    /* not a SEA build */
+  }
 
   if (isInstalledCopy) {
     log(`CLI already installed at ${assertDir}`);
+  } else if (runningAsSea) {
+    // Self-contained binary: copy the executable to ~/.assert/bin/assert
+    fs.mkdirSync(binDir, { recursive: true });
+    try {
+      fs.unlinkSync(destBin);
+    } catch {
+      /* doesn't exist */
+    }
+    // Drop any stale JS dist left behind by a prior npm/source install.
+    try {
+      fs.rmSync(distDir, { recursive: true, force: true });
+    } catch {
+      /* doesn't exist */
+    }
+
+    fs.copyFileSync(process.execPath, destBin);
+    fs.chmodSync(destBin, 0o755);
+
+    log(`Installed CLI to ${assertDir}`);
   } else {
-    // Copy from source
+    // JS layout (npm / from source): copy bin/assert.js + dist/cli.js.
     const sourceDir = path.dirname(path.dirname(currentBin));
     const sourceBin = path.join(sourceDir, 'bin', 'assert.js');
     const sourceDist = path.join(sourceDir, 'dist', 'cli.js');
@@ -264,14 +368,38 @@ async function cmdInstall(agent?: string): Promise<void> {
     fs.mkdirSync(binDir, { recursive: true });
     fs.mkdirSync(distDir, { recursive: true });
 
-    try { fs.unlinkSync(destBin); } catch { /* doesn't exist */ }
-    try { fs.unlinkSync(destDist); } catch { /* doesn't exist */ }
+    try {
+      fs.unlinkSync(destBin);
+    } catch {
+      /* doesn't exist */
+    }
+    try {
+      fs.unlinkSync(destDist);
+    } catch {
+      /* doesn't exist */
+    }
 
     fs.copyFileSync(sourceBin, destBin);
     fs.chmodSync(destBin, 0o755);
     fs.copyFileSync(sourceDist, destDist);
 
     log(`Installed CLI to ${assertDir}`);
+  }
+
+  // Stamp what we just installed so `assert status` and the interactive
+  // stale-check can tell when the on-PATH binary has moved ahead of this copy
+  // (e.g. after `brew upgrade`) and the hooks need refreshing.
+  try {
+    const stamp: InstallStamp = {
+      version: VERSION,
+      installedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(
+      path.join(assertDir, 'install.json'),
+      JSON.stringify(stamp, null, 2) + '\n',
+    );
+  } catch {
+    /* non-fatal: stale-check just won't have a stamp to read */
   }
 
   // Detect installed agents
@@ -288,7 +416,7 @@ async function cmdInstall(agent?: string): Promise<void> {
     }
     agentsToInstall = [agent];
   } else {
-    agentsToInstall = detectedAgents.filter(a => supportedAgents.includes(a));
+    agentsToInstall = detectedAgents.filter((a) => supportedAgents.includes(a));
   }
 
   if (agentsToInstall.length === 0) {
@@ -358,12 +486,15 @@ async function cmdSessions(): Promise<void> {
     const source = metadata.source.padEnd(12);
     const turns = `${metadata.turnCount} turns`;
     const tools = `${metadata.toolCallCount} tool calls`;
-    const files = metadata.filesModified.length > 0
-      ? `${metadata.filesModified.length} files`
-      : 'no files';
+    const files =
+      metadata.filesModified.length > 0
+        ? `${metadata.filesModified.length} files`
+        : 'no files';
 
     console.log(`  ${status} ${id}`);
-    console.log(`           source: ${source} | ${turns} | ${tools} | ${files}`);
+    console.log(
+      `           source: ${source} | ${turns} | ${tools} | ${files}`,
+    );
     console.log(`           started: ${metadata.startTime}`);
     if (metadata.branches.length > 0) {
       console.log(`           branches: ${metadata.branches.join(', ')}`);
@@ -393,7 +524,9 @@ async function cmdShow(sessionId: string): Promise<void> {
     console.log(`Branches: ${metadata.branches.join(', ') || 'none'}`);
     console.log(`Turns: ${metadata.turnCount}`);
     console.log(`Tool Calls: ${metadata.toolCallCount}`);
-    console.log(`Files Modified: ${metadata.filesModified.join(', ') || 'none'}`);
+    console.log(
+      `Files Modified: ${metadata.filesModified.join(', ') || 'none'}`,
+    );
   }
   console.log('');
   console.log('Events:');
@@ -403,38 +536,54 @@ async function cmdShow(sessionId: string): Promise<void> {
     const time = event.timestamp.substring(11, 19);
     switch (event.type) {
       case 'session_start':
-        console.log(`${time} [session_start] cwd=${event.cwd}, branch=${event.gitBranch || 'none'}`);
+        console.log(
+          `${time} [session_start] cwd=${event.cwd}, branch=${event.gitBranch || 'none'}`,
+        );
         break;
       case 'session_end':
         console.log(`${time} [session_end] reason=${event.reason}`);
         break;
       case 'human_turn':
         const preview = event.content.substring(0, 60);
-        console.log(`${time} [human] "${preview}${event.content.length > 60 ? '...' : ''}"`);
+        console.log(
+          `${time} [human] "${preview}${event.content.length > 60 ? '...' : ''}"`,
+        );
         break;
       case 'assistant_turn_start':
-        console.log(`${time} [assistant_start] model=${event.model || 'unknown'}`);
+        console.log(
+          `${time} [assistant_start] model=${event.model || 'unknown'}`,
+        );
         break;
       case 'assistant_text':
         const text = event.text || '';
         const textPreview = text.substring(0, 60);
-        console.log(`${time} [assistant_text] "${textPreview}${text.length > 60 ? '...' : ''}"`);
+        console.log(
+          `${time} [assistant_text] "${textPreview}${text.length > 60 ? '...' : ''}"`,
+        );
         break;
       case 'assistant_turn_end':
         console.log(`${time} [assistant_end]`);
         break;
       case 'tool_call':
-        console.log(`${time} [tool_call] ${event.toolName}(${JSON.stringify(event.input).substring(0, 40)}...)`);
+        console.log(
+          `${time} [tool_call] ${event.toolName}(${JSON.stringify(event.input).substring(0, 40)}...)`,
+        );
         break;
       case 'tool_result':
         const output = event.output || event.error || '';
-        console.log(`${time} [tool_result] ${output.substring(0, 50)}${output.length > 50 ? '...' : ''}`);
+        console.log(
+          `${time} [tool_result] ${output.substring(0, 50)}${output.length > 50 ? '...' : ''}`,
+        );
         break;
       case 'branch_switch':
-        console.log(`${time} [branch_switch] ${event.fromBranch || 'none'} -> ${event.toBranch}`);
+        console.log(
+          `${time} [branch_switch] ${event.fromBranch || 'none'} -> ${event.toBranch}`,
+        );
         break;
       case 'file_attribution':
-        console.log(`${time} [file_attribution] ${event.operation} ${event.filePath}`);
+        console.log(
+          `${time} [file_attribution] ${event.operation} ${event.filePath}`,
+        );
         break;
     }
   }
@@ -458,6 +607,19 @@ async function cmdStatus(): Promise<void> {
   for (const id of activeSessions) {
     console.log(`  - ${id}`);
   }
+
+  console.log('');
+  console.log(`Assert version: ${VERSION}`);
+  const stamp = readInstallStamp();
+  if (!stamp) {
+    console.log('Installed hooks: not installed (run `assert install`)');
+  } else if (installIsStale(stamp)) {
+    console.log(
+      `Installed hooks: v${stamp.version} — stale; run \`assert install\` to update to v${VERSION}`,
+    );
+  } else {
+    console.log(`Installed hooks: v${stamp.version} (up to date)`);
+  }
 }
 
 /**
@@ -465,7 +627,9 @@ async function cmdStatus(): Promise<void> {
  */
 async function cmdBlame(filePath: string): Promise<void> {
   const cwd = process.cwd();
-  const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
+  const absolutePath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(cwd, filePath);
 
   if (!fs.existsSync(absolutePath)) {
     error(`File not found: ${filePath}`);
@@ -533,7 +697,9 @@ async function cmdBlame(filePath: string): Promise<void> {
 
   // Display header
   console.log(`File: ${relativePath}`);
-  console.log(`Agent contribution: ${contribution.agentPercentage.toFixed(1)}% (${contribution.agentLines}/${attribution.length} lines)`);
+  console.log(
+    `Agent contribution: ${contribution.agentPercentage.toFixed(1)}% (${contribution.agentLines}/${attribution.length} lines)`,
+  );
   console.log('');
 
   // Display blame output
@@ -614,7 +780,9 @@ async function cmdPreCommit(): Promise<void> {
         const agentChanges = calculateAgentChanges(repoId, sessionId);
         const hasRelevantChanges = stagedFiles.some((f) => {
           const changes = agentChanges.get(f);
-          return changes && (changes.added.size > 0 || changes.removed.size > 0);
+          return (
+            changes && (changes.added.size > 0 || changes.removed.size > 0)
+          );
         });
 
         if (hasRelevantChanges) {
@@ -627,7 +795,11 @@ async function cmdPreCommit(): Promise<void> {
     if (copiedCount > 0) {
       // Stage the session files
       try {
-        execSync(`git add "${repoSessionsDir}"`, { cwd: gitRoot, stdio: 'pipe', timeout: 5000 });
+        execSync(`git add "${repoSessionsDir}"`, {
+          cwd: gitRoot,
+          stdio: 'pipe',
+          timeout: 5000,
+        });
       } catch {
         // Silent failure - files copied but not staged
       }
@@ -676,12 +848,15 @@ async function cmdSessionsAll(): Promise<void> {
     const source = metadata.source.padEnd(12);
     const turns = `${metadata.turnCount} turns`;
     const tools = `${metadata.toolCallCount} tool calls`;
-    const files = metadata.filesModified.length > 0
-      ? `${metadata.filesModified.length} files`
-      : 'no files';
+    const files =
+      metadata.filesModified.length > 0
+        ? `${metadata.filesModified.length} files`
+        : 'no files';
 
     console.log(`  ${status} ${sessionId}`);
-    console.log(`           source: ${source} | ${turns} | ${tools} | ${files}`);
+    console.log(
+      `           source: ${source} | ${turns} | ${tools} | ${files}`,
+    );
     console.log(`           started: ${metadata.startTime}`);
     if (sessionInfo?.gitRoot) {
       console.log(`           repo: ${sessionInfo.gitRoot}`);
@@ -691,7 +866,8 @@ async function cmdSessionsAll(): Promise<void> {
 }
 
 function printHelp(): void {
-  console.log(`
+  console.log(
+    `
 assert - Capture AI agent sessions and track code attribution
 
 Usage:
@@ -720,7 +896,8 @@ Examples:
   assert sessions                # List sessions in current project
   assert blame src/index.ts      # Show which agent wrote each line
   assert show abc123-xyz         # View a specific session
-`.trim());
+`.trim(),
+  );
 }
 
 // === Main ===
@@ -728,6 +905,18 @@ Examples:
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
+
+  // Notify on interactive use when the installed hook binary is older than the
+  // one being run. Skip `hook`/`pre-commit` (they run inside agents / git and
+  // must stay quiet) and `install` (it's about to refresh the copy).
+  if (command && !['hook', 'pre-commit', 'install'].includes(command)) {
+    const stamp = readInstallStamp();
+    if (installIsStale(stamp)) {
+      warn(
+        `installed hooks run Assert v${stamp!.version}, but this is v${VERSION}. Run \`assert install\` to update.`,
+      );
+    }
+  }
 
   switch (command) {
     case 'install':

@@ -10,10 +10,10 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/cli.js --external:fs --external:path --external:child_process --external:os --external:crypto",
-    "build:sea": "esbuild src/cli.ts --bundle --platform=node --format=cjs --outfile=dist/sea/cli.cjs",
+    "build": "node scripts/build.mjs esm",
+    "build:sea": "node scripts/build.mjs sea",
     "dev": "tsx src/cli.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
