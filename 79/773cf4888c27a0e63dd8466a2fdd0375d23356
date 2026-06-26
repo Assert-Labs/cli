@@ -1,0 +1,26 @@
+src/cli.ts
+  s_be7d3a5e391e1e::t_f633d4cb447345 151-202,209-210,218-234,236-241,243-246,248
+  s_be7d3a5e391e1e::t_cd0648045b629e 773-792
+  s_be7d3a5e391e1e::t_b342035d1e980d 62
+  s_be7d3a5e391e1e::t_667ac646f73ac8 454-462
+bin/assert.js
+  s_be7d3a5e391e1e::t_9c41b5a441e825 2-6
+tests/cli.test.ts
+  s_be7d3a5e391e1e::t_29ab54e1413de7 7,141-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "79773cf4888c27a0e63dd8466a2fdd0375d23356",
+  "prompts": {},
+  "sessions": {
+    "s_be7d3a5e391e1e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3b2e487-b2b1-4a4f-af3d-2a2feb2031cd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
