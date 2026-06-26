@@ -30,7 +30,14 @@ import {
   ensureSessionsDir,
 } from '../session-index';
 import { recordBoundary } from '../boundaries';
-import { type SessionEvent, type SessionStartEvent } from '../schema';
+import {
+  type SessionEvent,
+  type SessionStartEvent,
+  type AttributionEvent,
+  serializeSessionEvent,
+} from '../schema';
+import { normalizeClaudeTranscript } from '../transcript';
+import { hashLine } from '../line-attribution';
 
 /** A single repo touched by a session. */
 export interface TouchedRepo {
@@ -163,50 +170,55 @@ export function writeEvent(sessionId: string, event: SessionEvent): void {
   writer.close();
 }
 
-function copySessionToRepo(srcFile: string, sessionId: string, gitRoot: string): void {
-  if (!fs.existsSync(srcFile)) return;
-  const repoDir = path.join(gitRoot, '.sessions');
-  if (!fs.existsSync(repoDir)) {
-    fs.mkdirSync(repoDir, { recursive: true });
+/** Model id recorded on the session's assistant turns (models.dev form), if any. */
+function sessionModelId(sessionFile: string): string | undefined {
+  try {
+    for (const line of fs.readFileSync(sessionFile, 'utf-8').split('\n')) {
+      if (!line.trim()) continue;
+      const o = JSON.parse(line);
+      if (o.type === 'assistant_turn_start' && o.model) return o.model;
+    }
+  } catch {
+    /* no session file */
   }
-  fs.copyFileSync(srcFile, path.join(repoDir, `${sessionId}.jsonl`));
+  return undefined;
 }
 
-// Transcript line types to drop when distilling, per agent. v1: only the
-// clearly-redundant bulk — `progress` (streaming duplicates of the final
-// message) and `file-history-snapshot` (file copies git already has). Prompts,
-// reasoning, tool calls and tool results are all kept in full.
-const DISTILL_DROP_TYPES: Record<string, Set<string>> = {
-  'claude-code': new Set(['progress', 'file-history-snapshot']),
-};
-
 /**
- * Distill an agent transcript into `destPath`, dropping bulk-junk line types
- * for its source. Returns false if the transcript is missing/unreadable (caller
- * falls back to the stitched central session file). Unknown sources copy as-is.
+ * Attribution fragments for a repo: per changed file, the content hashes of lines
+ * the agent added (vs the baseline at startRef). The portable source for traces.
  */
-function distillTranscript(srcPath: string, destPath: string, source: string): boolean {
-  if (!fs.existsSync(srcPath)) return false;
-  const drop = DISTILL_DROP_TYPES[source];
-  try {
-    const out: string[] = [];
-    for (const line of fs.readFileSync(srcPath, 'utf-8').split('\n')) {
-      if (!line.trim()) continue;
-      if (drop) {
-        try {
-          const o = JSON.parse(line);
-          if (o && drop.has(o.type)) continue;
-        } catch {
-          // keep unparseable lines rather than lose data
-        }
-      }
-      out.push(line);
+function attributionEvents(
+  state: SessionState,
+  repo: TouchedRepo,
+  changed: string[],
+  baseline: Map<string, string>,
+  modelId: string | undefined,
+): AttributionEvent[] {
+  const events: AttributionEvent[] = [];
+  for (const f of changed) {
+    let current: string;
+    try {
+      current = fs.readFileSync(path.join(repo.gitRoot, f), 'utf-8');
+    } catch {
+      continue; // deleted — no lines to attribute
     }
-    fs.writeFileSync(destPath, out.join('\n') + '\n');
-    return true;
-  } catch {
-    return false;
+    const base = baseline.get(f) ?? '';
+    const baseHashes = new Set(base ? base.split('\n').map(hashLine) : []);
+    const added = [...new Set(current.split('\n').map(hashLine).filter((h) => !baseHashes.has(h)))];
+    if (!added.length) continue;
+    events.push({
+      type: 'attribution',
+      timestamp: new Date().toISOString(),
+      sessionId: state.sessionId,
+      filePath: f,
+      vcsRevision: repo.startRef,
+      operation: base ? 'modify' : 'create',
+      contributor: { type: 'ai', modelId },
+      lineHashes: added,
+    });
   }
+  return events;
 }
 
 /** Patterns from a repo's `.assertignore` (gitignore-ish: `*`, `**`, trailing `/`). */
@@ -334,22 +346,38 @@ export function startSession(
   return state;
 }
 
-// Prefer the distilled agent transcript (full prompts + reasoning + tool calls);
-// fall back to our stitched central log.
+// Materialize the session in Assert's consistent schema. When the agent provides
+// a native transcript (Claude Code), normalize it — preserving reasoning — so
+// every agent is stored identically; otherwise use our stitched central log
+// (already in that schema, e.g. Cursor).
 function resolveSessionFile(state: SessionState, transcriptPath?: string): string {
   const stitched = path.join(getSessionsDir(), `${state.sessionId}.jsonl`);
-  if (!transcriptPath) return stitched;
-  const distilled = path.join(getSessionsDir(), `${state.sessionId}.distilled.jsonl`);
-  return distillTranscript(transcriptPath, distilled, state.source) ? distilled : stitched;
+  if (!transcriptPath || state.source !== 'claude-code') return stitched;
+  try {
+    const events = normalizeClaudeTranscript(fs.readFileSync(transcriptPath, 'utf-8'), state.sessionId);
+    if (!events.length) return stitched;
+    const out = path.join(getSessionsDir(), `${state.sessionId}.normalized.jsonl`);
+    fs.writeFileSync(out, events.map(serializeSessionEvent).join('\n') + '\n');
+    return out;
+  } catch {
+    return stitched;
+  }
 }
 
 /**
  * Sync the session into one repo: find what the agent changed there via git
- * (any change, however made), honoring `.assertignore`. If anything changed,
- * index those files and copy the session data into `<repo>/.sessions/`. On
- * `final`, also record start/end attribution boundaries for `assert blame`.
+ * (any change, however made), honoring `.assertignore`. Writes the session
+ * (consistent schema) into `<repo>/.sessions/<id>.jsonl`. On `final`, also
+ * appends portable `attribution` events (for traces) and records boundaries
+ * (for `assert blame`).
  */
-function syncRepo(state: SessionState, repo: TouchedRepo, sessionFile: string, final: boolean): void {
+function syncRepo(
+  state: SessionState,
+  repo: TouchedRepo,
+  sessionFile: string,
+  final: boolean,
+  modelId: string | undefined,
+): void {
   const ignore = loadAssertIgnore(repo.gitRoot);
   const changed = getChangedFiles(repo.gitRoot, repo.startRef).filter((f) => !isIgnored(f, ignore));
   if (changed.length === 0) return;
@@ -358,14 +386,29 @@ function syncRepo(state: SessionState, repo: TouchedRepo, sessionFile: string, f
   for (const f of changed) index = indexFileModification(index, state.sessionId, repo.repoId, f);
   saveIndex(index);
 
+  let body = '';
+  try {
+    body = fs.readFileSync(sessionFile, 'utf-8').replace(/\n+$/, '');
+  } catch {
+    /* no session file yet */
+  }
+
   if (final) {
     const baseline = new Map<string, string>();
     for (const f of changed) baseline.set(f, fileAtRef(repo.gitRoot, repo.startRef, f) ?? '');
     recordBoundary(repo.repoId, state.sessionId, 'start', repo.gitRoot, changed, repo.startRef, baseline);
     recordBoundary(repo.repoId, state.sessionId, 'end', repo.gitRoot, changed);
+
+    const attrs = attributionEvents(state, repo, changed, baseline, modelId);
+    if (attrs.length) {
+      const serialized = attrs.map(serializeSessionEvent).join('\n');
+      body = body ? `${body}\n${serialized}` : serialized;
+    }
   }
 
-  copySessionToRepo(sessionFile, state.sessionId, repo.gitRoot);
+  const repoDir = path.join(repo.gitRoot, '.sessions');
+  if (!fs.existsSync(repoDir)) fs.mkdirSync(repoDir, { recursive: true });
+  fs.writeFileSync(path.join(repoDir, `${state.sessionId}.jsonl`), body + '\n');
 }
 
 /**
@@ -375,12 +418,13 @@ function syncRepo(state: SessionState, repo: TouchedRepo, sessionFile: string, f
  */
 export function syncSession(state: SessionState, transcriptPath?: string): void {
   const sessionFile = resolveSessionFile(state, transcriptPath);
-  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, false);
+  const modelId = sessionModelId(sessionFile);
+  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, false, modelId);
 }
 
 /**
  * End a session: write session_end, mark it ended, and do a final sync that also
- * records attribution boundaries.
+ * records attribution (events + boundaries).
  */
 export function endSession(
   state: SessionState,
@@ -399,7 +443,8 @@ export function endSession(
   saveIndex(index);
 
   const sessionFile = resolveSessionFile(state, transcriptPath);
-  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, true);
+  const modelId = sessionModelId(sessionFile);
+  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, true, modelId);
 
   clearState(state.sessionId, state.source);
 }

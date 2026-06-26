@@ -52,6 +52,13 @@ export interface AssistantTextEvent extends BaseEvent {
   text: string;
 }
 
+export interface AssistantReasoningEvent extends BaseEvent {
+  type: 'assistant_reasoning';
+  turnId: string;
+  text: string;
+  signature?: string;
+}
+
 export interface AssistantTurnEndEvent extends BaseEvent {
   type: 'assistant_turn_end';
   turnId: string;
@@ -104,6 +111,17 @@ export interface FileAttributionEvent extends BaseEvent {
   operation: 'create' | 'modify' | 'delete';
 }
 
+// Portable attribution: which content (by line hash) a contributor produced in a
+// file, relative to a revision. The source for deriving an agent-trace record.
+export interface AttributionEvent extends BaseEvent {
+  type: 'attribution';
+  filePath: string;
+  vcsRevision?: string;
+  operation: 'create' | 'modify' | 'delete';
+  contributor: { type: 'ai' | 'human' | 'unknown'; modelId?: string };
+  lineHashes: string[];
+}
+
 // === Union Types ===
 
 export type SessionEvent =
@@ -112,11 +130,13 @@ export type SessionEvent =
   | HumanTurnEvent
   | AssistantTurnStartEvent
   | AssistantTextEvent
+  | AssistantReasoningEvent
   | AssistantTurnEndEvent
   | ToolCallEvent
   | ToolResultEvent
   | BranchSwitchEvent
-  | FileAttributionEvent;
+  | FileAttributionEvent
+  | AttributionEvent;
 
 // === Supporting Types ===
 

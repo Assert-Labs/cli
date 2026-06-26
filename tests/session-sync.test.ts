@@ -19,6 +19,7 @@ import { loadState, setCaptureDisabled } from '../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../src/repo-identity';
 import { loadIndex, findSessionsForFiles } from '../src/session-index';
 import { calculateAgentChanges } from '../src/boundaries';
+import { hashLine } from '../src/line-attribution';
 
 describe('git-driven session sync', () => {
   let originalHome: string | undefined;
@@ -116,6 +117,23 @@ describe('git-driven session sync', () => {
     setCaptureDisabled(false);
     await processHook('SessionStart', JSON.stringify({ session_id: 's6', cwd: repo }));
     expect(loadState('s6', 'claude-code')).not.toBeNull();
+  });
+
+  it('writes portable attribution events into the session on end', () => {
+    const state = startSession('s7', 'claude-code', repo);
+    write('feature.ts', 'export const x = 1;\n');
+    endSession(state, 'completed');
+
+    const events = fs
+      .readFileSync(repoSession('s7'), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
+    const attr = events.find((e) => e.type === 'attribution');
+    expect(attr).toBeDefined();
+    expect(attr.filePath).toBe('feature.ts');
+    expect(attr.contributor.type).toBe('ai');
+    expect(attr.lineHashes).toContain(hashLine('export const x = 1;'));
   });
 
   it('attributes only agent-added lines, not pre-existing ones', () => {
