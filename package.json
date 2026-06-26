@@ -1,10 +1,10 @@
 {
   "name": "@assertlabs/cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
-    "assert": "./bin/assert.js"
+    "assert": "bin/assert.js"
   },
   "engines": {
     "node": ">=18"
