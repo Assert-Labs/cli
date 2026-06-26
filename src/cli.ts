@@ -59,48 +59,10 @@ function warn(msg: string): void {
 }
 
 // Injected at build time via esbuild `define` (see scripts/build.mjs). Falls
-// back to 'dev' when running from source (tsx), where no define is applied —
-// 'dev' builds intentionally never raise the stale-install notice.
+// back to 'dev' when running from source (tsx), where no define is applied.
 declare const __ASSERT_VERSION__: string;
 const VERSION: string =
   typeof __ASSERT_VERSION__ === 'string' ? __ASSERT_VERSION__ : 'dev';
-
-interface InstallStamp {
-  version: string;
-  installedAt: string;
-}
-
-function installStampPath(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || '';
-  return path.join(home, '.assert', 'install.json');
-}
-
-/**
- * The version/time recorded at `assert install` — i.e. the binary the hooks
- * actually invoke (~/.assert/bin/assert). Null if never installed.
- */
-function readInstallStamp(): InstallStamp | null {
-  try {
-    return JSON.parse(
-      fs.readFileSync(installStampPath(), 'utf-8'),
-    ) as InstallStamp;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * True when the binary now running is newer than the installed copy the hooks
- * use — e.g. after a `brew upgrade` without re-running `assert install`.
- */
-function installIsStale(stamp: InstallStamp | null): boolean {
-  return (
-    VERSION !== 'dev' &&
-    stamp != null &&
-    typeof stamp.version === 'string' &&
-    stamp.version !== VERSION
-  );
-}
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -186,28 +148,66 @@ function installCursorPlugin(home: string): void {
   log('✓ Cursor');
 }
 
+/**
+ * The (pre-realpath) path of the binary we're running from.
+ *
+ * For a SEA build the binary IS process.execPath. We must NOT use
+ * process.argv[1]: when a SEA binary is launched via PATH (e.g. Homebrew's
+ * `assert install`), argv[1] is the bare launch name ("assert"), not a path.
+ * Resolving that against the cwd would yield `<cwd>/assert`, which realpath
+ * then rejects with ENOENT unless a file named `assert` happens to exist in the
+ * cwd — the "path did not exist" failure users hit from a brew install.
+ *
+ * For the JS layout (npm / from source) argv[1] points at bin/assert.js, and is
+ * resolved against the cwd if relative so callers can locate sibling files.
+ */
+export function runningBinPath(
+  runningAsSea: boolean,
+  argv1: string | undefined,
+  execPath: string,
+  cwd: string,
+): string {
+  if (runningAsSea) return execPath;
+  const bin = argv1 ?? '';
+  return path.isAbsolute(bin) ? bin : path.resolve(cwd, bin);
+}
+
+/**
+ * The launcher for the running CLI as found on PATH — i.e. the PATH entry
+ * (Homebrew's `/opt/homebrew/bin/assert` shim, or the npm global symlink) whose
+ * target IS the binary we're running. Returned WITHOUT resolving symlinks: that
+ * un-resolved shim is the stable indirection point a `brew upgrade` / `npm i -g`
+ * rewrites in place, so linking ~/.assert/bin/assert to it lets upgrades flow
+ * through to the agents' hooks automatically. `excludeDir` (our own
+ * ~/.assert/bin) is skipped so we never link to the symlink we manage.
+ *
+ * Returns null when the running binary isn't reachable via PATH (e.g. invoked by
+ * a relative path or from source); callers fall back to the resolved binary.
+ */
+export function findStableBinPath(
+  pathEnv: string,
+  binName: string,
+  excludeDir: string,
+  runningBinReal: string,
+  realpath: (p: string) => string | null,
+): string | null {
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir || path.resolve(dir) === path.resolve(excludeDir)) continue;
+    if (realpath(path.join(dir, binName)) === runningBinReal) {
+      return path.join(dir, binName);
+    }
+  }
+  return null;
+}
+
 async function cmdInstall(agent?: string): Promise<void> {
   const home = process.env.HOME || process.env.USERPROFILE || '';
   const assertDir = path.join(home, '.assert');
   const binDir = path.join(assertDir, 'bin');
-  const distDir = path.join(assertDir, 'dist');
   const destBin = path.join(binDir, 'assert');
-  const destDist = path.join(distDir, 'cli.js');
 
-  // Get the source directory (where bin/assert.js and dist/cli.js are)
-  let currentBin = process.argv[1];
-  if (!path.isAbsolute(currentBin)) {
-    currentBin = path.resolve(process.cwd(), currentBin);
-  }
-  currentBin = fs.realpathSync(currentBin);
-
-  // Check if we're running from the installed copy (~/.assert/bin/assert)
-  const isInstalledCopy =
-    currentBin === destBin || currentBin.startsWith(assertDir);
-
-  // A single-executable (SEA) build is one self-contained binary with no sibling bin/assert.js or
-  // dist/cli.js. Detect it so we copy the executable itself rather than looking
-  // for the (nonexistent) two-file JS layout
+  // SEA (single self-contained binary) vs the npm/source JS layout only affects
+  // how we resolve the running binary's own path (see runningBinPath).
   let runningAsSea = false;
   try {
     runningAsSea = (await import('node:sea')).isSea();
@@ -215,78 +215,37 @@ async function cmdInstall(agent?: string): Promise<void> {
     /* not a SEA build */
   }
 
-  if (isInstalledCopy) {
-    log(`CLI already installed at ${assertDir}`);
-  } else if (runningAsSea) {
-    // Self-contained binary: copy the executable to ~/.assert/bin/assert
-    fs.mkdirSync(binDir, { recursive: true });
-    try {
-      fs.unlinkSync(destBin);
-    } catch {
-      /* doesn't exist */
-    }
-    // Drop any stale JS dist left behind by a prior npm/source install.
-    try {
-      fs.rmSync(distDir, { recursive: true, force: true });
-    } catch {
-      /* doesn't exist */
-    }
+  // The agents' hooks invoke a fixed path — $HOME/.assert/bin/assert (see
+  // src/plugins.ts) — so capture works regardless of the hook's PATH and no
+  // matter how the CLI was installed. We make that path a SYMLINK to the real
+  // binary rather than a copy: pointing it at the on-PATH launcher means a later
+  // `brew upgrade` / `npm i -g` flows through to the hooks automatically, with
+  // no stale duplicate to detect or refresh.
+  const currentBin = fs.realpathSync(
+    runningBinPath(runningAsSea, process.argv[1], process.execPath, process.cwd()),
+  );
+  const linkTarget =
+    findStableBinPath(process.env.PATH ?? '', 'assert', binDir, currentBin, (p) => {
+      try {
+        return fs.realpathSync(p);
+      } catch {
+        return null;
+      }
+    }) ?? currentBin;
 
-    fs.copyFileSync(process.execPath, destBin);
-    fs.chmodSync(destBin, 0o755);
+  fs.mkdirSync(binDir, { recursive: true });
+  // Replace whatever's there — a prior symlink, or a real binary copied by an
+  // older Assert that copied instead of linked. rmSync(force) also clears a
+  // dangling symlink and never throws when absent.
+  fs.rmSync(destBin, { force: true });
+  fs.symlinkSync(linkTarget, destBin);
 
-    log(`Installed CLI to ${assertDir}`);
-  } else {
-    // JS layout (npm / from source): copy bin/assert.js + dist/cli.js.
-    const sourceDir = path.dirname(path.dirname(currentBin));
-    const sourceBin = path.join(sourceDir, 'bin', 'assert.js');
-    const sourceDist = path.join(sourceDir, 'dist', 'cli.js');
+  // Remove leftovers from older copy-based installs (the duplicated dist bundle
+  // and the version stamp that backed the now-removed stale check).
+  fs.rmSync(path.join(assertDir, 'dist'), { recursive: true, force: true });
+  fs.rmSync(path.join(assertDir, 'install.json'), { force: true });
 
-    if (!fs.existsSync(sourceBin)) {
-      error(`Source bin not found: ${sourceBin}`);
-      process.exit(1);
-    }
-    if (!fs.existsSync(sourceDist)) {
-      error(`Source dist not found: ${sourceDist}. Run 'pnpm build' first.`);
-      process.exit(1);
-    }
-
-    fs.mkdirSync(binDir, { recursive: true });
-    fs.mkdirSync(distDir, { recursive: true });
-
-    try {
-      fs.unlinkSync(destBin);
-    } catch {
-      /* doesn't exist */
-    }
-    try {
-      fs.unlinkSync(destDist);
-    } catch {
-      /* doesn't exist */
-    }
-
-    fs.copyFileSync(sourceBin, destBin);
-    fs.chmodSync(destBin, 0o755);
-    fs.copyFileSync(sourceDist, destDist);
-
-    log(`Installed CLI to ${assertDir}`);
-  }
-
-  // Stamp what we just installed so `assert status` and the interactive
-  // stale-check can tell when the on-PATH binary has moved ahead of this copy
-  // (e.g. after `brew upgrade`) and the hooks need refreshing.
-  try {
-    const stamp: InstallStamp = {
-      version: VERSION,
-      installedAt: new Date().toISOString(),
-    };
-    fs.writeFileSync(
-      path.join(assertDir, 'install.json'),
-      JSON.stringify(stamp, null, 2) + '\n',
-    );
-  } catch {
-    /* non-fatal: stale-check just won't have a stamp to read */
-  }
+  log(`Linked ${destBin} -> ${linkTarget}`);
 
   // Detect installed agents
   const detectedAgents = detectInstalledAgents();
@@ -492,15 +451,16 @@ async function cmdStatus(): Promise<void> {
   console.log('');
   console.log(`Capture: ${captureDisabled() ? 'disabled (run `assert enable`)' : 'enabled'}`);
   console.log(`Assert version: ${VERSION}`);
-  const stamp = readInstallStamp();
-  if (!stamp) {
+  // The hooks invoke ~/.assert/bin/assert, a symlink to the installed binary.
+  // If it resolves, hooks run whatever the symlink points at (kept current by
+  // brew/npm upgrades); if it's missing or dangling, capture won't fire.
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const hookBin = path.join(home, '.assert', 'bin', 'assert');
+  try {
+    const target = fs.realpathSync(hookBin);
+    console.log(`Installed hooks: ${hookBin} -> ${target}`);
+  } catch {
     console.log('Installed hooks: not installed (run `assert install`)');
-  } else if (installIsStale(stamp)) {
-    console.log(
-      `Installed hooks: v${stamp.version} — stale; run \`assert install\` to update to v${VERSION}`,
-    );
-  } else {
-    console.log(`Installed hooks: v${stamp.version} (up to date)`);
   }
 }
 
@@ -747,18 +707,6 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
 
-  // Notify on interactive use when the installed hook binary is older than the
-  // one being run. Skip `hook`/`pre-commit` (they run inside agents / git and
-  // must stay quiet) and `install` (it's about to refresh the copy).
-  if (command && !['hook', 'pre-commit', 'install'].includes(command)) {
-    const stamp = readInstallStamp();
-    if (installIsStale(stamp)) {
-      warn(
-        `installed hooks run Assert v${stamp!.version}, but this is v${VERSION}. Run \`assert install\` to update.`,
-      );
-    }
-  }
-
   switch (command) {
     case 'install':
       await cmdInstall(args[1]);
@@ -822,7 +770,23 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
-  error(e.message);
-  process.exit(1);
-});
+/** Run the CLI, mapping any uncaught error to a non-zero exit. */
+export function run(): void {
+  main().catch((e) => {
+    error(e.message);
+    process.exit(1);
+  });
+}
+
+// Auto-run only when loaded as the CJS process entry — i.e. the SEA
+// single-executable, whose bundled main module IS this file. The npm/ESM build
+// (dist/cli.js, "type": "module") has no `require`/`module`, so the bin shim
+// (bin/assert.js) calls run() instead; this also keeps the module importable
+// from tests without kicking off the CLI.
+if (
+  typeof require !== 'undefined' &&
+  typeof module !== 'undefined' &&
+  require.main === module
+) {
+  run();
+}

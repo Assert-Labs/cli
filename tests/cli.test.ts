@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { createSession } from '../src/session-manager';
 import { listSessionFiles, readSessionEvents } from '../src/session-writer';
+import { runningBinPath, findStableBinPath } from '../src/cli';
 
 describe('CLI integration', () => {
   let testDir: string;
@@ -135,6 +136,95 @@ describe('CLI integration', () => {
       for (const line of lines) {
         expect(() => JSON.parse(line)).not.toThrow();
       }
+    });
+  });
+
+  describe('runningBinPath (install binary resolution)', () => {
+    // Regression: a SEA binary launched via PATH (e.g. Homebrew `assert
+    // install`) gets process.argv[1] === "assert" (the bare launch name). The
+    // installer must use process.execPath, NOT resolve "assert" against the cwd
+    // and realpath it — that throws ENOENT ("path did not exist") unless a file
+    // named `assert` happens to exist in the cwd.
+    it('uses execPath for a SEA build, ignoring the bare argv[1] launch name', () => {
+      const execPath = '/opt/homebrew/Cellar/assert/0.1.6/bin/assert';
+      expect(
+        runningBinPath(true, 'assert', execPath, '/some/working/dir'),
+      ).toBe(execPath);
+    });
+
+    it('ignores argv[1] for SEA even when it would resolve to a real-looking path', () => {
+      expect(runningBinPath(true, '../assert', '/exec/path', '/cwd')).toBe(
+        '/exec/path',
+      );
+    });
+
+    it('resolves a relative argv[1] against the cwd for the JS layout', () => {
+      expect(runningBinPath(false, 'bin/assert.js', '/usr/bin/node', '/proj')).toBe(
+        '/proj/bin/assert.js',
+      );
+    });
+
+    it('keeps an absolute argv[1] as-is for the JS layout', () => {
+      expect(
+        runningBinPath(false, '/proj/bin/assert.js', '/usr/bin/node', '/proj'),
+      ).toBe('/proj/bin/assert.js');
+    });
+  });
+
+  describe('findStableBinPath (upgrade-friendly symlink target)', () => {
+    const sep = path.delimiter;
+
+    // The Homebrew shim /opt/homebrew/bin/assert is a symlink to the cellar
+    // binary, which is also what's running. We want the *shim* path back (not
+    // realpath'd), because brew rewrites that shim on upgrade.
+    it('returns the un-resolved PATH shim that points at the running binary', () => {
+      const running = '/opt/homebrew/Cellar/assert/0.1.6/bin/assert';
+      const realpaths: Record<string, string> = {
+        '/opt/homebrew/bin/assert': running,
+      };
+      const pathEnv = ['/usr/bin', '/opt/homebrew/bin'].join(sep);
+      expect(
+        findStableBinPath(pathEnv, 'assert', '/home/u/.assert/bin', running, (p) =>
+          realpaths[p] ?? null,
+        ),
+      ).toBe('/opt/homebrew/bin/assert');
+    });
+
+    it('skips our own ~/.assert/bin so it never links to the symlink it manages', () => {
+      const running = '/opt/homebrew/Cellar/assert/0.1.6/bin/assert';
+      const excludeDir = '/home/u/.assert/bin';
+      const realpaths: Record<string, string> = {
+        // The managed symlink also resolves to the running binary…
+        '/home/u/.assert/bin/assert': running,
+        // …but the real shim is the one we want.
+        '/opt/homebrew/bin/assert': running,
+      };
+      const pathEnv = [excludeDir, '/opt/homebrew/bin'].join(sep);
+      expect(
+        findStableBinPath(pathEnv, 'assert', excludeDir, running, (p) =>
+          realpaths[p] ?? null,
+        ),
+      ).toBe('/opt/homebrew/bin/assert');
+    });
+
+    it('returns null when no PATH entry resolves to the running binary', () => {
+      const pathEnv = ['/usr/bin', '/usr/local/bin'].join(sep);
+      expect(
+        findStableBinPath(pathEnv, 'assert', '/home/u/.assert/bin', '/some/where/assert', () => null),
+      ).toBe(null);
+    });
+
+    it('ignores a same-named binary on PATH that is a different install', () => {
+      const running = '/opt/homebrew/Cellar/assert/0.1.6/bin/assert';
+      const realpaths: Record<string, string> = {
+        '/usr/local/bin/assert': '/usr/local/lib/other/assert', // different tool
+      };
+      const pathEnv = ['/usr/local/bin'].join(sep);
+      expect(
+        findStableBinPath(pathEnv, 'assert', '/home/u/.assert/bin', running, (p) =>
+          realpaths[p] ?? null,
+        ),
+      ).toBe(null);
     });
   });
 });
