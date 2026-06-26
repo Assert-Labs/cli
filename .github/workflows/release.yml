@@ -95,6 +95,37 @@ jobs:
           path: assert-${{ matrix.target }}
           if-no-files-found: error
 
+  publish-npm:
+    name: publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing requires npm >= 11.5.1; Node 22 still bundles npm 10.x.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build ESM bundle
+        run: pnpm build
+
+      - name: Publish to npm
+        run: npm publish --access public
+
   release:
     name: publish release
     needs: build

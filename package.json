@@ -1,6 +1,6 @@
 {
-  "name": "@assert-labs/cli",
-  "version": "0.1.4",
+  "name": "@assertlabs/cli",
+  "version": "0.1.5",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
@@ -8,6 +8,17 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assert-Labs/cli.git"
+  },
+  "homepage": "https://github.com/Assert-Labs/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Assert-Labs/cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "node scripts/build.mjs esm",
@@ -20,7 +31,7 @@
     "prepublishOnly": "pnpm build"
   },
   "files": [
-    "dist",
+    "dist/cli.js",
     "bin"
   ],
   "author": "Assert Labs",
