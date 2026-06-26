@@ -122,6 +122,20 @@ export function recordBoundary(
 }
 
 /**
+ * Drop every boundary recorded for a session in a repo, so a session can
+ * re-record its boundaries idempotently. Used by agents (e.g. Codex) that lack
+ * a session-end hook and so finalize attribution on every turn boundary.
+ */
+export function removeSessionBoundaries(repoId: string, sessionId: string): void {
+  const store = loadBoundaries(repoId);
+  const kept = store.boundaries.filter((b) => b.sessionId !== sessionId);
+  if (kept.length !== store.boundaries.length) {
+    store.boundaries = kept;
+    saveBoundaries(repoId, store);
+  }
+}
+
+/**
  * Get the most recent end boundary for a repo
  */
 export function getLastEndBoundary(repoId: string): SessionBoundary | null {

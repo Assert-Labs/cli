@@ -1,255 +1,237 @@
 /**
  * Codex CLI Hook Handlers
  *
- * Implements hooks for OpenAI Codex CLI integration.
- * Codex stores sessions in ~/.codex/sessions/ and supports hooks.
+ * Thin adapter that translates OpenAI Codex hook payloads into the shared,
+ * agent-agnostic session recorder (see ./session-recorder). All repo discovery,
+ * multi-repo attribution, boundaries, and .sessions/ copying live there.
  *
- * Supported hooks:
- * - SessionStart: Called when a new session begins
- * - Stop: Called when session is stopped
- * - PreToolUse: Called before a tool is invoked
- * - PostToolUse: Called after a tool completes (with output)
+ * Codex mirrors Claude Code's hook model: the same event names (SessionStart,
+ * UserPromptSubmit, PreToolUse, PostToolUse, Stop) and the same payload fields
+ * (session_id, cwd, tool_name, tool_input, tool_response, prompt). The one
+ * difference that matters here: Codex has no session-end event, so `Stop`
+ * (which fires per turn) is where we finalize attribution.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
-import { createSession, type SessionManager } from '../session-manager';
-import { createSessionId } from '../schema';
+import {
+  type SessionState,
+  loadState,
+  saveState,
+  startSession,
+  syncSession,
+  recordFileEdit,
+  writeEvent,
+  captureDisabled,
+} from './session-recorder';
+import {
+  type ToolCallEvent,
+  type ToolResultEvent,
+  type HumanTurnEvent,
+  type AssistantTurnStartEvent,
+  type AssistantTextEvent,
+  type AssistantTurnEndEvent,
+  createTurnId,
+  createToolCallId,
+} from '../schema';
 
-// Session state file for persistence across hook invocations
-const SESSION_STATE_FILE = '.sessions/.codex-active-session';
+const SOURCE = 'codex';
 
-interface CodexSessionStart {
+// Fields Codex sends on every hook event.
+interface CodexBase {
   session_id: string;
   cwd: string;
   model?: string;
 }
 
-interface CodexStop {
-  session_id: string;
-  cwd: string;
+interface CodexSessionStart extends CodexBase {
+  source?: string; // startup | resume | clear | compact
 }
 
-interface CodexPreToolUse {
-  session_id: string;
+interface CodexPreToolUse extends CodexBase {
   tool_name: string;
   tool_input: Record<string, unknown>;
 }
 
-interface CodexPostToolUse {
-  session_id: string;
-  tool_name: string;
-  tool_input: Record<string, unknown>;
-  tool_output?: string;
-  tool_error?: string;
+interface CodexPostToolUse extends CodexPreToolUse {
+  tool_response?: unknown;
 }
 
-interface ActiveCodexState {
-  sessionId: string;
-  currentTurnId: string | null;
-  pendingToolCalls: Map<string, string>;
-  model?: string;
+interface CodexUserPromptSubmit extends CodexBase {
+  prompt: string;
 }
 
-/**
- * Load active session state from disk
- */
-function loadSessionState(cwd: string): ActiveCodexState | null {
-  const statePath = path.join(cwd, SESSION_STATE_FILE);
-  if (!fs.existsSync(statePath)) {
-    return null;
-  }
-  try {
-    const data = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    return {
-      sessionId: data.sessionId,
-      currentTurnId: data.currentTurnId ?? null,
-      pendingToolCalls: new Map(Object.entries(data.pendingToolCalls ?? {})),
-      model: data.model,
+interface CodexStop extends CodexBase {
+  last_assistant_message?: string | null;
+}
+
+function ensureTurn(state: SessionState, model?: string): string {
+  if (!state.currentTurnId) {
+    state.currentTurnId = createTurnId();
+    const startEvent: AssistantTurnStartEvent = {
+      type: 'assistant_turn_start',
+      timestamp: new Date().toISOString(),
+      sessionId: state.sessionId,
+      turnId: state.currentTurnId,
+      model,
     };
-  } catch {
-    return null;
+    writeEvent(state.sessionId, startEvent);
   }
+  return state.currentTurnId;
 }
 
-/**
- * Save active session state to disk
- */
-function saveSessionState(cwd: string, state: ActiveCodexState): void {
-  const statePath = path.join(cwd, SESSION_STATE_FILE);
-  const dir = path.dirname(statePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  const data = {
-    sessionId: state.sessionId,
-    currentTurnId: state.currentTurnId,
-    pendingToolCalls: Object.fromEntries(state.pendingToolCalls),
-    model: state.model,
-  };
-  fs.writeFileSync(statePath, JSON.stringify(data, null, 2));
-}
-
-/**
- * Clear active session state
- */
-function clearSessionState(cwd: string): void {
-  const statePath = path.join(cwd, SESSION_STATE_FILE);
-  if (fs.existsSync(statePath)) {
-    fs.unlinkSync(statePath);
-  }
-}
-
-/**
- * Get session manager for active session
- */
-function getSessionManager(sessionId: string, cwd: string): SessionManager {
-  return createSession({
-    source: 'codex',
-    cwd,
-    sessionId,
-  });
-}
-
-/**
- * Handle SessionStart hook
- */
 export function handleSessionStart(data: CodexSessionStart): void {
-  const { session_id, cwd, model } = data;
-
-  const session = createSession({
-    source: 'codex',
-    cwd,
-    sessionId: session_id,
-  });
-
-  const state: ActiveCodexState = {
-    sessionId: session_id,
-    currentTurnId: null,
-    pendingToolCalls: new Map(),
-    model,
-  };
-  saveSessionState(cwd, state);
-
-  console.error(`[assert] Codex session started: ${session_id}`);
-}
-
-/**
- * Handle Stop hook
- */
-export function handleStop(data: CodexStop): void {
-  const { session_id, cwd } = data;
-  const state = loadSessionState(cwd);
-
-  if (!state || state.sessionId !== session_id) {
-    console.error(`[assert] No active Codex session found: ${session_id}`);
+  // `resume` reuses an existing session id; keep its tracked repos and turn.
+  if (loadState(data.session_id, SOURCE)) {
     return;
   }
-
-  const session = getSessionManager(session_id, cwd);
-  session.end('aborted');
-
-  clearSessionState(cwd);
-  console.error(`[assert] Codex session stopped: ${session_id}`);
+  startSession(data.session_id, SOURCE, data.cwd);
+  console.error(`[assert] Codex session started: ${data.session_id}`);
 }
 
-/**
- * Handle PreToolUse hook
- */
+export function handleUserPromptSubmit(data: CodexUserPromptSubmit): void {
+  const state = loadState(data.session_id, SOURCE);
+  if (!state) return;
+
+  // A new human turn ends any in-progress assistant turn.
+  state.currentTurnId = null;
+
+  const event: HumanTurnEvent = {
+    type: 'human_turn',
+    timestamp: new Date().toISOString(),
+    sessionId: data.session_id,
+    turnId: createTurnId(),
+    content: data.prompt,
+  };
+  writeEvent(data.session_id, event);
+
+  saveState(state);
+}
+
 export function handlePreToolUse(data: CodexPreToolUse): void {
   const { session_id, tool_name, tool_input } = data;
-  const cwd = process.cwd();
-  const state = loadSessionState(cwd);
 
-  if (!state || state.sessionId !== session_id) {
-    return;
-  }
+  const state = loadState(session_id, SOURCE);
+  if (!state) return;
 
-  const session = getSessionManager(session_id, cwd);
-
-  // Ensure we have a turn
-  if (!state.currentTurnId) {
-    state.currentTurnId = session.startAssistantTurn(state.model);
-  }
-
-  // Record the tool call
-  const toolCallId = session.recordToolCall(
-    state.currentTurnId,
-    tool_name,
-    tool_input
-  );
+  const turnId = ensureTurn(state, data.model);
+  const toolCallId = createToolCallId();
+  const event: ToolCallEvent = {
+    type: 'tool_call',
+    timestamp: new Date().toISOString(),
+    sessionId: session_id,
+    turnId,
+    toolCallId,
+    toolName: tool_name,
+    input: tool_input,
+  };
+  writeEvent(session_id, event);
 
   state.pendingToolCalls.set(tool_name, toolCallId);
-  saveSessionState(cwd, state);
+  saveState(state);
 }
 
-/**
- * Handle PostToolUse hook
- */
 export function handlePostToolUse(data: CodexPostToolUse): void {
-  const { session_id, tool_name, tool_input, tool_output, tool_error } = data;
-  const cwd = process.cwd();
-  const state = loadSessionState(cwd);
+  const { session_id, tool_name, tool_input } = data;
 
-  if (!state || state.sessionId !== session_id) {
-    return;
-  }
+  const state = loadState(session_id, SOURCE);
+  if (!state) return;
 
-  const toolCallId = state.pendingToolCalls.get(tool_name);
-  if (!toolCallId || !state.currentTurnId) {
-    return;
-  }
+  const toolCallId = state.pendingToolCalls.get(tool_name) || createToolCallId();
 
-  const session = getSessionManager(session_id, cwd);
+  const response = (data.tool_response ?? {}) as Record<string, unknown>;
+  const tool_output =
+    typeof data.tool_response === 'string'
+      ? data.tool_response
+      : (response.stdout as string) || (response.output as string) || undefined;
+  const tool_error = (response.stderr as string) || (response.error as string) || undefined;
 
-  // Determine files modified from tool input
+  // Best-effort: surface the edited file so its repo is tracked (multi-repo
+  // aware). Attribution itself comes from the git diff, not this field, so an
+  // unknown tool shape just means slightly less transcript metadata.
   let filesModified: string[] | undefined;
-  const fileModifyingTools = [
-    'write_file',
-    'edit_file',
-    'create_file',
-    'patch_file',
-  ];
-  if (fileModifyingTools.includes(tool_name.toLowerCase())) {
-    const filePath = (tool_input.path as string) || (tool_input.file as string);
-    if (filePath) {
-      filesModified = [filePath];
+  const filePath =
+    (tool_input.file_path as string) ||
+    (tool_input.path as string) ||
+    (tool_input.file as string) ||
+    undefined;
+  if (filePath) {
+    // Codex may give an absolute or cwd-relative path; resolve before tracking.
+    const absPath = path.isAbsolute(filePath) ? filePath : path.join(state.cwd, filePath);
+    const relativePath = recordFileEdit(state, absPath);
+    if (relativePath) {
+      filesModified = [relativePath];
     }
   }
 
-  session.recordToolResult(
-    state.currentTurnId,
+  const event: ToolResultEvent = {
+    type: 'tool_result',
+    timestamp: new Date().toISOString(),
+    sessionId: session_id,
+    turnId: state.currentTurnId || createTurnId(),
     toolCallId,
-    tool_output,
-    tool_error,
-    filesModified
-  );
+    output: tool_output,
+    error: tool_error,
+    filesModified,
+  };
+  writeEvent(session_id, event);
 
   state.pendingToolCalls.delete(tool_name);
-  saveSessionState(cwd, state);
+  saveState(state);
 }
 
-/**
- * Process hook invocation from stdin
- */
-export async function processHook(
-  hookType: string,
-  input: string
-): Promise<void> {
+export function handleStop(data: CodexStop): void {
+  const state = loadState(data.session_id, SOURCE);
+  if (!state) return;
+
+  // Codex has no session-end hook; Stop fires at the end of each assistant
+  // turn. Record the final message, close the turn, and finalize attribution.
+  const message = data.last_assistant_message;
+  if (message) {
+    const turnId = ensureTurn(state, data.model);
+    const textEvent: AssistantTextEvent = {
+      type: 'assistant_text',
+      timestamp: new Date().toISOString(),
+      sessionId: data.session_id,
+      turnId,
+      text: message,
+    };
+    writeEvent(data.session_id, textEvent);
+  }
+  if (state.currentTurnId) {
+    const endEvent: AssistantTurnEndEvent = {
+      type: 'assistant_turn_end',
+      timestamp: new Date().toISOString(),
+      sessionId: data.session_id,
+      turnId: state.currentTurnId,
+    };
+    writeEvent(data.session_id, endEvent);
+  }
+
+  state.currentTurnId = null;
+  saveState(state);
+  // Finalize: writes portable attribution + boundaries, idempotently per turn.
+  syncSession(state, undefined, true);
+}
+
+export async function processHook(hookType: string, input: string): Promise<void> {
+  if (captureDisabled()) return;
   const data = JSON.parse(input);
 
   switch (hookType) {
     case 'SessionStart':
       handleSessionStart(data as CodexSessionStart);
       break;
-    case 'Stop':
-      handleStop(data as CodexStop);
+    case 'UserPromptSubmit':
+      handleUserPromptSubmit(data as CodexUserPromptSubmit);
       break;
     case 'PreToolUse':
       handlePreToolUse(data as CodexPreToolUse);
       break;
     case 'PostToolUse':
       handlePostToolUse(data as CodexPostToolUse);
+      break;
+    case 'Stop':
+      handleStop(data as CodexStop);
       break;
     default:
       console.error(`[assert] Unknown Codex hook type: ${hookType}`);

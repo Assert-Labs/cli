@@ -15,6 +15,7 @@
 
 - [ ] `assert install --hooks=none` flag to opt out of auto hook installation
 - [ ] `assert install --hooks=global` flag to use `core.hooksPath`
-- [ ] Cursor and Codex hook implementations (currently stubs)
+- [ ] `assert cleanup` for Codex sessions, which have no session-end hook to mark
+      them ended (they show as `[ACTIVE]` until a stale-session sweep)
 - [ ] Cloud sync for reviewers to see attribution data
 - [ ] Web UI for git-blame-style attribution (line → prompt linking)

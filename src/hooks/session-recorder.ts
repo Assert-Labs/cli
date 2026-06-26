@@ -29,7 +29,7 @@ import {
   getSessionsDir,
   ensureSessionsDir,
 } from '../session-index';
-import { recordBoundary } from '../boundaries';
+import { recordBoundary, removeSessionBoundaries } from '../boundaries';
 import {
   type SessionEvent,
   type SessionStartEvent,
@@ -394,6 +394,9 @@ function syncRepo(
   }
 
   if (final) {
+    // Idempotent: an agent without a session-end hook (Codex) finalizes on every
+    // turn, so clear any prior boundaries for this session before re-recording.
+    removeSessionBoundaries(repo.repoId, state.sessionId);
     const baseline = new Map<string, string>();
     for (const f of changed) baseline.set(f, fileAtRef(repo.gitRoot, repo.startRef, f) ?? '');
     recordBoundary(repo.repoId, state.sessionId, 'start', repo.gitRoot, changed, repo.startRef, baseline);
@@ -415,11 +418,19 @@ function syncRepo(
  * Materialize the session into every touched repo with changes. Called at each
  * turn boundary so session data lands in the working tree (visible in
  * `git status`) before the developer commits — never injected at commit time.
+ *
+ * Pass `final` to also write portable attribution events and boundaries (the
+ * trace/blame data normally written only at session end). Agents without a
+ * session-end hook (Codex) use this on every turn; it is idempotent.
  */
-export function syncSession(state: SessionState, transcriptPath?: string): void {
+export function syncSession(
+  state: SessionState,
+  transcriptPath?: string,
+  final = false,
+): void {
   const sessionFile = resolveSessionFile(state, transcriptPath);
   const modelId = sessionModelId(sessionFile);
-  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, false, modelId);
+  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, final, modelId);
 }
 
 /**

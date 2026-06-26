@@ -14,9 +14,16 @@ import { captureDisabled, setCaptureDisabled } from './hooks/session-recorder';
 import {
   claudePluginDir,
   cursorPluginDir,
+  codexPluginDir,
+  codexMarketplacePath,
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
+  generateCodexPlugin,
+  buildCodexMarketplace,
+  findCodexCli,
+  codexPluginInstall,
+  detectCodexCliVersion,
   skillMd,
 } from './plugins';
 import {
@@ -33,7 +40,6 @@ import { getRepoId } from './repo-identity';
 import {
   getSessionsDir,
   loadIndex,
-  findSessionsForRepo,
   findSessionsForFiles,
 } from './session-index';
 import { calculateAgentChanges } from './boundaries';
@@ -41,7 +47,6 @@ import {
   createFileSnapshot,
   buildAttribution,
   calculateAgentContribution,
-  type AttributionRecord,
 } from './line-attribution';
 
 // === Helpers ===
@@ -97,10 +102,10 @@ function detectInstalledAgents(): string[] {
     detected.push('cursor');
   }
 
-  // Codex: check for .codex directory (future support)
-  // if (fs.existsSync(path.join(home, '.codex'))) {
-  //   detected.push('codex');
-  // }
+  // Codex: check for .codex directory
+  if (fs.existsSync(path.join(home, '.codex'))) {
+    detected.push('codex');
+  }
 
   return detected;
 }
@@ -128,7 +133,11 @@ function writeSkill(pluginDir: string): void {
 function installClaudeCodePlugin(home: string): void {
   const dir = claudePluginDir(home);
   const claudeVersion = detectClaudeCodeVersion();
-  writePlugin(dir, '.claude-plugin', generateClaudeCodePlugin(VERSION, claudeVersion));
+  writePlugin(
+    dir,
+    '.claude-plugin',
+    generateClaudeCodePlugin(VERSION, claudeVersion),
+  );
   // Claude treats ~/.claude/skills/assert itself as the skill folder.
   fs.writeFileSync(path.join(dir, 'SKILL.md'), skillMd());
   log('✓ Claude Code');
@@ -138,7 +147,10 @@ function installCursorPlugin(home: string): void {
   // Remove a plugin from the pre-fix location (~/.cursor/plugins/assert), which
   // Cursor never auto-loaded.
   try {
-    fs.rmSync(path.join(home, '.cursor', 'plugins', 'assert'), { recursive: true, force: true });
+    fs.rmSync(path.join(home, '.cursor', 'plugins', 'assert'), {
+      recursive: true,
+      force: true,
+    });
   } catch {
     /* nothing to clean up */
   }
@@ -146,6 +158,58 @@ function installCursorPlugin(home: string): void {
   writePlugin(dir, '.cursor-plugin', generateCursorPlugin(VERSION));
   writeSkill(dir);
   log('✓ Cursor');
+}
+
+function installCodexPlugin(home: string): void {
+  // Codex loads plugins via a marketplace rather than a fixed auto-load dir, so
+  // we write the bundle plus a personal marketplace entry that points at it.
+  const dir = codexPluginDir(home);
+  const assertBin = path.join(home, '.assert', 'bin', 'assert');
+  writePlugin(dir, '.codex-plugin', generateCodexPlugin(VERSION, assertBin));
+  writeSkill(dir);
+
+  const marketplacePath = codexMarketplacePath(home);
+  let existing: string | null = null;
+  try {
+    existing = fs.readFileSync(marketplacePath, 'utf-8');
+  } catch {
+    /* no marketplace yet */
+  }
+  fs.mkdirSync(path.dirname(marketplacePath), { recursive: true });
+  fs.writeFileSync(marketplacePath, buildCodexMarketplace(existing) + '\n');
+
+  // Unlike Claude/Cursor (which auto-load from a directory), Codex needs an
+  // explicit install from the marketplace, and only the modern (Rust) Codex
+  // supports plugins/hooks at all — the legacy `@openai/codex` does not. Install
+  // for the user when a plugin-capable CLI is found; otherwise say why.
+  const cli = findCodexCli(home);
+  const pathVersion = detectCodexCliVersion();
+
+  if (cli) {
+    const installed = codexPluginInstall(cli).ok;
+    log(
+      installed
+        ? '✓ Codex (plugin installed — trust its hooks once in Codex to start capture)'
+        : '✓ Codex — finish with: codex plugin add assert@assert-local (then trust its hooks)',
+    );
+    // The plugin-capable binary may not be the `codex` on PATH (a stale,
+    // pre-plugins CLI can shadow it). Warn so capture isn't silently missing.
+    if (pathVersion && cli !== 'codex') {
+      warn(
+        `your \`codex\` on PATH (v${pathVersion}) predates plugin support; ` +
+          'capture runs only with a modern Codex CLI or the Codex app.',
+      );
+    }
+  } else if (pathVersion) {
+    warn(
+      `Codex v${pathVersion} does not support plugins; assert capture needs a newer Codex CLI.`,
+    );
+    log('  Upgrade Codex, then re-run `assert install codex`.');
+  } else {
+    log(
+      '✓ Codex bundle written — run `codex plugin add assert@assert-local` with a plugin-capable Codex.',
+    );
+  }
 }
 
 /**
@@ -222,16 +286,27 @@ async function cmdInstall(agent?: string): Promise<void> {
   // `brew upgrade` / `npm i -g` flows through to the hooks automatically, with
   // no stale duplicate to detect or refresh.
   const currentBin = fs.realpathSync(
-    runningBinPath(runningAsSea, process.argv[1], process.execPath, process.cwd()),
+    runningBinPath(
+      runningAsSea,
+      process.argv[1],
+      process.execPath,
+      process.cwd(),
+    ),
   );
   const linkTarget =
-    findStableBinPath(process.env.PATH ?? '', 'assert', binDir, currentBin, (p) => {
-      try {
-        return fs.realpathSync(p);
-      } catch {
-        return null;
-      }
-    }) ?? currentBin;
+    findStableBinPath(
+      process.env.PATH ?? '',
+      'assert',
+      binDir,
+      currentBin,
+      (p) => {
+        try {
+          return fs.realpathSync(p);
+        } catch {
+          return null;
+        }
+      },
+    ) ?? currentBin;
 
   fs.mkdirSync(binDir, { recursive: true });
   // Replace whatever's there — a prior symlink, or a real binary copied by an
@@ -249,7 +324,7 @@ async function cmdInstall(agent?: string): Promise<void> {
 
   // Detect installed agents
   const detectedAgents = detectInstalledAgents();
-  const supportedAgents = ['claude-code', 'cursor'];
+  const supportedAgents = ['claude-code', 'cursor', 'codex'];
 
   // Filter to requested agent or all detected+supported
   let agentsToInstall: string[];
@@ -276,6 +351,8 @@ async function cmdInstall(agent?: string): Promise<void> {
       installClaudeCodePlugin(home);
     } else if (a === 'cursor') {
       installCursorPlugin(home);
+    } else if (a === 'codex') {
+      installCodexPlugin(home);
     }
   }
 
@@ -449,7 +526,9 @@ async function cmdStatus(): Promise<void> {
   }
 
   console.log('');
-  console.log(`Capture: ${captureDisabled() ? 'disabled (run `assert enable`)' : 'enabled'}`);
+  console.log(
+    `Capture: ${captureDisabled() ? 'disabled (run `assert enable`)' : 'enabled'}`,
+  );
   console.log(`Assert version: ${VERSION}`);
   // The hooks invoke ~/.assert/bin/assert, a symlink to the installed binary.
   // If it resolves, hooks run whatever the symlink points at (kept current by
@@ -485,7 +564,9 @@ function gatherFragments(gitRoot: string): AttributionEvent[] {
     return out;
   }
   for (const file of files) {
-    for (const line of fs.readFileSync(path.join(dir, file), 'utf-8').split('\n')) {
+    for (const line of fs
+      .readFileSync(path.join(dir, file), 'utf-8')
+      .split('\n')) {
       if (!line.trim()) continue;
       try {
         const o = JSON.parse(line);
@@ -510,7 +591,11 @@ async function cmdTrace(ref?: string): Promise<void> {
     gatherFragments(gitRoot),
     (p) => fileAtRef(gitRoot, revision, p),
     revision,
-    { toolVersion: VERSION, id: randomUUID(), timestamp: new Date().toISOString() },
+    {
+      toolVersion: VERSION,
+      id: randomUUID(),
+      timestamp: new Date().toISOString(),
+    },
   );
   console.log(JSON.stringify(trace, null, 2));
 }
