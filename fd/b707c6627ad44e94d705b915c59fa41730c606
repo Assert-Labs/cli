@@ -1,0 +1,14 @@
+README.md
+  h_a0e615773b4470 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "fdb707c6627ad44e94d705b915c59fa41730c606",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
