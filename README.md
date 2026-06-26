@@ -1,6 +1,6 @@
 <h1>
 <p align="center">
-  <img width="128" alt="logo" src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/logo.png" />
+  <img width="128" alt="logo" src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/logo.png?v=1" />
   <br>Assert
 </h1>
   <p align="center">
