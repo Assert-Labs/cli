@@ -25,7 +25,10 @@ import {
   extractSessionMetadata,
   findActiveSessions,
 } from './session-writer';
-import { findGitRoot, getGitState } from './git-watcher';
+import { randomUUID } from 'crypto';
+import { findGitRoot, getGitState, fileAtRef } from './git-watcher';
+import { buildTrace } from './agent-trace';
+import { type AttributionEvent } from './schema';
 import { getRepoId } from './repo-identity';
 import {
   getSessionsDir,
@@ -511,6 +514,47 @@ function cmdEnable(): void {
   log('Capture enabled.');
 }
 
+/** Collect attribution events from the committed .sessions/ JSONL files. */
+function gatherFragments(gitRoot: string): AttributionEvent[] {
+  const dir = path.join(gitRoot, '.sessions');
+  const out: AttributionEvent[] = [];
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
+  } catch {
+    return out;
+  }
+  for (const file of files) {
+    for (const line of fs.readFileSync(path.join(dir, file), 'utf-8').split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const o = JSON.parse(line);
+        if (o.type === 'attribution') out.push(o as AttributionEvent);
+      } catch {
+        /* skip */
+      }
+    }
+  }
+  return out;
+}
+
+/** Derive an agent-trace TraceRecord for a revision (default HEAD) and print it. */
+async function cmdTrace(ref?: string): Promise<void> {
+  const gitRoot = findGitRoot(process.cwd());
+  if (!gitRoot) {
+    error('Not a git repository');
+    process.exit(1);
+  }
+  const revision = ref || getGitState(gitRoot).ref;
+  const trace = buildTrace(
+    gatherFragments(gitRoot),
+    (p) => fileAtRef(gitRoot, revision, p),
+    revision,
+    { toolVersion: VERSION, id: randomUUID(), timestamp: new Date().toISOString() },
+  );
+  console.log(JSON.stringify(trace, null, 2));
+}
+
 /**
  * Show line-level attribution for a file (like git blame but for agents)
  */
@@ -676,6 +720,7 @@ Usage:
   assert sessions --all          List all sessions (central storage)
   assert show <session-id>       Show session details
   assert blame <file>            Show line-by-line agent attribution (like git blame)
+  assert trace [ref]             Print an agent-trace record for a revision (default HEAD)
   assert status                  Show current status
   assert disable                 Pause capture (hooks stay installed)
   assert enable                  Resume capture
@@ -753,6 +798,9 @@ async function main(): Promise<void> {
       break;
     case 'status':
       await cmdStatus();
+      break;
+    case 'trace':
+      await cmdTrace(args[1]);
       break;
     case 'disable':
       cmdDisable();

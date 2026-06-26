@@ -93,6 +93,7 @@ assert install
 assert install [agent]      # Install hooks globally (all agents if none specified)
 assert sessions             # List sessions in current directory
 assert show <session-id>    # Show session details
+assert trace [ref]          # Export agent-trace attribution for a revision (default HEAD)
 assert status               # Show current status
 assert disable              # Pause capture (hooks stay installed)
 assert enable               # Resume capture
@@ -112,6 +113,20 @@ shows up in `git status` like any other file — you stage and commit it yoursel
   state.
 - **Turn off for one session:** set `ASSERT_DISABLE=1` in the environment your
   agent runs in.
+
+## Agent Trace
+
+Captured sessions can be exported as [Agent Trace](https://agent-trace.dev)
+records — an open standard for AI code attribution
+([spec & reference](https://github.com/cursor/agent-trace)). `assert trace`
+derives a conformant `TraceRecord` for a revision from your committed session
+data (attributing lines to the contributing model), so any tool can consume the
+attribution:
+
+```bash
+assert trace            # agent-trace record for HEAD
+assert trace <ref>      # for a specific commit
+```
 
 ## License
 
