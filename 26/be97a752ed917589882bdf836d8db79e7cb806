@@ -1,0 +1,34 @@
+.github/workflows/release.yml
+  s_5814fa6ed8cf4d::t_37de3b61fcd0e6 104
+  s_5814fa6ed8cf4d::t_45d844a59f5f83 117
+  s_5814fa6ed8cf4d::t_007b701d9210ba 98-103,105-116,118-128
+README.md
+  s_5814fa6ed8cf4d::t_6c7f9aefba4279 18-19
+  s_5814fa6ed8cf4d::t_c7b39a052fda1d 56
+package.json
+  s_5814fa6ed8cf4d::t_fc4e3d44bfd67f 2,12-20,22
+  h_a0e615773b4470 3
+  s_5814fa6ed8cf4d::t_0f62836ec38097 21
+  s_5814fa6ed8cf4d::t_464fd4f7b96406 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "26be97a752ed917589882bdf836d8db79e7cb806",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_5814fa6ed8cf4d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00a706b6-f846-469c-a894-04c57e840f8f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
