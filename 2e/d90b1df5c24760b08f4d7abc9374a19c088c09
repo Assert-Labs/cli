@@ -1,0 +1,31 @@
+TODO.md
+  s_fc79aa36896b71::t_0943ccab458edb 18-19
+src/boundaries.ts
+  s_fc79aa36896b71::t_6033cf49c649fe 124-137
+src/hooks/codex.ts
+  s_fc79aa36896b71::t_436b01e96e4bf0 4-6,8-12,16-40,46-47,50,55-56,59-60,63-64,67-77,79,82-85,87-88,91-93,95-96,98-103,105,107,113-114,116-127,130,134,136-137,139,141-146,148-150,152-162,166-170,172-176,179,182-217,224-225,233-235
+src/hooks/session-recorder.ts
+  s_fc79aa36896b71::t_a7bed81e631403 32,397-399,421-424,426-430,433
+src/plugins.ts
+  s_fc79aa36896b71::t_c70d2bd68ad87c 7,21-35,130-303
+tests/codex.test.ts
+  s_fc79aa36896b71::t_ba4482a2e5452f 1-132
+tests/plugins.test.ts
+  s_fc79aa36896b71::t_4c9b805e299f0c 11-13,16-17,55-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "2ed90b1df5c24760b08f4d7abc9374a19c088c09",
+  "prompts": {},
+  "sessions": {
+    "s_fc79aa36896b71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55d6a6cc-65ad-492b-9c82-ae8efae3c69e",
+        "model": "unknown"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
