@@ -1,0 +1,31 @@
+tests/session-recorder.test.ts
+  s_be7d3a5e391e1e::t_000745d6aa8d8b 1-77
+src/git-watcher.ts
+  s_be7d3a5e391e1e::t_f9552adf7ffa3e 44
+  s_be7d3a5e391e1e::t_91d4a8c6bf91da 74-98
+  s_be7d3a5e391e1e::t_58e8e3c40d0458 152
+tests/repo-identity.test.ts
+  s_be7d3a5e391e1e::t_0d97e4233d86a8 126-163
+tests/git-watcher.test.ts
+  s_be7d3a5e391e1e::t_07a83cfe639ddb 112-131
+  s_be7d3a5e391e1e::t_04d513c44e6aac 10-11
+src/repo-identity.ts
+  s_be7d3a5e391e1e::t_ca5bd11ac80dbe 24-26,29-30
+  s_be7d3a5e391e1e::t_e52a082789ce63 4-6,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "ffbf4a03d8cf99e13a9f54e6587ffa63a86b04e6",
+  "prompts": {},
+  "sessions": {
+    "s_be7d3a5e391e1e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3b2e487-b2b1-4a4f-af3d-2a2feb2031cd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
