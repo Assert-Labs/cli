@@ -123,6 +123,44 @@ describe('repo-identity', () => {
     });
   });
 
+  describe('git worktrees', () => {
+    // git worktree add needs a commit to point at.
+    function commitAndAddWorktree(branch: string, wt: string): void {
+      execSync('git config user.email "test@test.com"', { cwd: gitRoot, stdio: 'pipe' });
+      execSync('git config user.name "Test"', { cwd: gitRoot, stdio: 'pipe' });
+      fs.writeFileSync(path.join(gitRoot, 'seed.txt'), 'seed\n');
+      execSync('git add -A', { cwd: gitRoot, stdio: 'pipe' });
+      execSync('git commit -m seed', { cwd: gitRoot, stdio: 'pipe' });
+      execSync(`git worktree add -b ${branch} "${wt}"`, { cwd: gitRoot, stdio: 'pipe' });
+    }
+
+    it('creates the repo id from a worktree (regression: .git is a file there)', () => {
+      const wt = path.join(testDir, 'wt');
+      commitAndAddWorktree('feature', wt);
+
+      // In a linked worktree, <wt>/.git is a FILE (`gitdir: …`), not a directory.
+      expect(fs.statSync(path.join(wt, '.git')).isFile()).toBe(true);
+
+      // Pre-fix this threw ENOTDIR (writing into the .git file as a dir).
+      const wtId = getOrCreateRepoId(wt);
+      expect(wtId).not.toBeNull();
+      expect(wtId!.repoId).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    it('shares one repo id across the main checkout and its worktrees', () => {
+      const wt = path.join(testDir, 'wt');
+      commitAndAddWorktree('feature', wt);
+
+      const wtId = getOrCreateRepoId(wt);
+      const mainId = getRepoId(gitRoot);
+
+      expect(mainId).not.toBeNull();
+      expect(mainId!.repoId).toBe(wtId!.repoId);
+      // The id lives in the shared (main) git dir, not the worktree's gitdir.
+      expect(fs.existsSync(path.join(gitRoot, '.git', 'assert-repo-id'))).toBe(true);
+    });
+  });
+
   describe('repo moves', () => {
     it('preserves repo ID when repo is moved', () => {
       // Create repo ID

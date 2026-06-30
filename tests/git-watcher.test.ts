@@ -7,6 +7,8 @@ import {
   findGitRoot,
   getGitState,
   createGitWatcher,
+  gitDir,
+  commonGitDir,
 } from '../src/git-watcher';
 
 /**
@@ -106,6 +108,26 @@ describe('git-watcher', () => {
 
     it('throws for non-git directory', () => {
       expect(() => getGitState(testDir)).toThrow('Not a git repository');
+    });
+
+    it('reports the worktree branch from a linked worktree', () => {
+      // Regression: a worktree's `.git` is a file, so reading <wt>/.git/HEAD
+      // used to throw "Not a git repository".
+      initGitRepo();
+      const wt = path.join(testDir, '..', `${path.basename(testDir)}-wt`);
+      execSync(`git worktree add -b wt-branch "${wt}"`, { cwd: testDir, stdio: 'pipe' });
+      try {
+        const state = getGitState(wt);
+        expect(state.branch).toBe('wt-branch');
+        expect(state.ref).toMatch(/^[a-f0-9]{40}$/);
+        expect(state.isDetached).toBe(false);
+
+        // The worktree has its own gitdir but shares the main common dir.
+        expect(normalizePath(gitDir(wt))).not.toBe(normalizePath(commonGitDir(wt)));
+        expect(normalizePath(commonGitDir(wt))).toBe(normalizePath(commonGitDir(testDir)));
+      } finally {
+        fs.rmSync(wt, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      }
     });
   });
 

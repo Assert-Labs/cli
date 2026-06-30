@@ -1,14 +1,15 @@
 /**
  * Repo Identity
  *
- * Manages stable repo identification via UUID stored in .git/assert-repo-id.
- * This ID survives repo moves since it lives inside .git/.
+ * Manages stable repo identification via UUID stored in the repo's common git
+ * dir as assert-repo-id. This ID survives repo moves since it lives inside the
+ * git dir, and is shared by every linked worktree of the same repo.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { findGitRoot } from './git-watcher';
+import { findGitRoot, commonGitDir } from './git-watcher';
 
 const REPO_ID_FILE = 'assert-repo-id';
 
@@ -20,10 +21,13 @@ export function generateRepoId(): string {
 }
 
 /**
- * Get the path to the repo ID file
+ * Get the path to the repo ID file, in the repo's common git dir so every
+ * linked worktree resolves to the same file. Falls back to `<gitRoot>/.git`
+ * only if git can't report the common dir.
  */
 export function getRepoIdPath(gitRoot: string): string {
-  return path.join(gitRoot, '.git', REPO_ID_FILE);
+  const dir = commonGitDir(gitRoot) ?? path.join(gitRoot, '.git');
+  return path.join(dir, REPO_ID_FILE);
 }
 
 /**

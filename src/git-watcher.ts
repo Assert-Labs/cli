@@ -41,7 +41,7 @@ export function findGitRoot(cwd: string = process.cwd()): string | null {
  * Get current git state
  */
 export function getGitState(gitRoot: string): GitState {
-  const headPath = path.join(gitRoot, '.git', 'HEAD');
+  const headPath = path.join(gitDir(gitRoot) ?? path.join(gitRoot, '.git'), 'HEAD');
 
   if (!fs.existsSync(headPath)) {
     throw new Error(`Not a git repository: ${gitRoot}`);
@@ -69,6 +69,31 @@ function git(gitRoot: string, args: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Absolute path to this checkout's git dir. For a normal clone that's
+ * `<root>/.git`; for a linked worktree it's `<main>/.git/worktrees/<name>`,
+ * where this worktree's own HEAD lives. We resolve it via git rather than
+ * assuming `<root>/.git` is a directory — in a worktree `.git` is a *file*
+ * (`gitdir: …`), so the naive path doesn't exist. Null if not a repo.
+ */
+export function gitDir(gitRoot: string): string | null {
+  const out = git(gitRoot, 'rev-parse --git-dir').trim();
+  if (!out) return null;
+  return path.isAbsolute(out) ? out : path.resolve(gitRoot, out);
+}
+
+/**
+ * Absolute path to the repo's common git dir — the shared `<main>/.git` that
+ * every linked worktree points back to (identical to gitDir() for a normal
+ * clone). Repo-wide state (e.g. the assert repo id) lives here so all worktrees
+ * of one repo agree on it. Null if not a repo.
+ */
+export function commonGitDir(gitRoot: string): string | null {
+  const out = git(gitRoot, 'rev-parse --git-common-dir').trim();
+  if (!out) return null;
+  return path.isAbsolute(out) ? out : path.resolve(gitRoot, out);
 }
 
 /** Repo-relative files changed since `sinceRef` (committed + uncommitted). */
@@ -124,7 +149,7 @@ function getHeadRef(gitRoot: string): string {
  * Create a git watcher that monitors for branch changes
  */
 export function createGitWatcher(gitRoot: string): GitWatcher {
-  const headPath = path.join(gitRoot, '.git', 'HEAD');
+  const headPath = path.join(gitDir(gitRoot) ?? path.join(gitRoot, '.git'), 'HEAD');
   const callbacks: Array<(from: GitState, to: GitState) => void> = [];
   let currentState = getGitState(gitRoot);
   let watcher: fs.FSWatcher | null = null;
