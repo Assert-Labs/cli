@@ -1,0 +1,40 @@
+src/cli.ts
+  s_75ca7901e86e8e::t_50db08c54b5d9f 194
+  s_75ca7901e86e8e::t_6fd93ae35128d9 241
+  s_75ca7901e86e8e::t_b6926eeaaa8df5 517
+  s_75ca7901e86e8e::t_ab3917555212a8 720-721
+  s_75ca7901e86e8e::t_c236f734e41fd0 703
+  s_75ca7901e86e8e::t_010e8de164c612 736-737
+AGENTS.md
+  s_75ca7901e86e8e::t_3a90a3c31cc4d6 55
+tests/cli.test.ts
+  s_75ca7901e86e8e::t_f6407a2f531f6e 142,144
+  s_75ca7901e86e8e::t_5cddb0c722e1d8 210
+TODO.md
+  s_75ca7901e86e8e::t_455d5d794bd680 16-17
+CONTRIBUTING.md
+  s_75ca7901e86e8e::t_f77e5f2b4be8ff 45
+formula-templates/assert.rb
+  s_75ca7901e86e8e::t_c96fb19f77cdab 38-39
+README.md
+  s_75ca7901e86e8e::t_d5e414152736b6 72-73
+  s_75ca7901e86e8e::t_29683ec186bf1d 90
+  s_75ca7901e86e8e::t_44149d4c000226 32
+  s_75ca7901e86e8e::t_c25af4a119c29a 97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "cf35dcd567c83e218b8920a1d1c6fc56f09a79d3",
+  "prompts": {},
+  "sessions": {
+    "s_75ca7901e86e8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d375d9d5-e8b1-4489-9e4b-6002e6a15ed3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
