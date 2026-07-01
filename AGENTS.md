@@ -30,9 +30,12 @@ context, contribution process, and security policy, see
 ## Where tests go
 
 Put new tests in the existing file that covers the area before creating a new
-one — tests live in `tests/`, one file per `src/` module (e.g.
-`tests/session-writer.test.ts` for `src/session-writer.ts`). Tests use Vitest;
-import the unit under test from `../src/...`.
+one. Tests live under `tests/`, mirroring the `src/` layout — one file per
+`src/` module at the matching path (e.g. `tests/session-writer.test.ts` for
+`src/session-writer.ts`, `tests/hooks/codex.test.ts` for
+`src/hooks/codex.ts`). Tests use Vitest; import the unit under test with the
+matching relative depth (`../src/...` at the top level, `../../src/...` under
+`tests/hooks/`).
 
 ## Commands
 

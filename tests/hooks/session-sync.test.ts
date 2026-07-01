@@ -14,12 +14,12 @@ import {
   syncSession,
   endSession,
   blameFile,
-} from '../src/hooks/session-recorder';
-import { processHook } from '../src/hooks/claude-code';
-import { loadState, setCaptureDisabled } from '../src/hooks/session-recorder';
-import { getOrCreateRepoId } from '../src/repo-identity';
-import { loadIndex, findSessionsForFiles } from '../src/session-index';
-import { hashLine } from '../src/line-attribution';
+} from '../../src/hooks/session-recorder';
+import { processHook } from '../../src/hooks/claude-code';
+import { loadState, setCaptureDisabled } from '../../src/hooks/session-recorder';
+import { getOrCreateRepoId } from '../../src/repo-identity';
+import { loadIndex, findSessionsForFiles } from '../../src/session-index';
+import { hashLine } from '../../src/line-attribution';
 
 describe('git-driven session sync', () => {
   let originalHome: string | undefined;

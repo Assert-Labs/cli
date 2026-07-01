@@ -9,10 +9,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
-import { processHook } from '../src/hooks/codex';
-import { loadState, setCaptureDisabled, blameFile } from '../src/hooks/session-recorder';
-import { getOrCreateRepoId } from '../src/repo-identity';
-import { hashLine } from '../src/line-attribution';
+import { processHook } from '../../src/hooks/codex';
+import { loadState, setCaptureDisabled, blameFile } from '../../src/hooks/session-recorder';
+import { getOrCreateRepoId } from '../../src/repo-identity';
+import { hashLine } from '../../src/line-attribution';
 
 describe('codex hook adapter', () => {
   let originalHome: string | undefined;

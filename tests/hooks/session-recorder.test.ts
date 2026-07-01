@@ -7,7 +7,7 @@ import {
   startSession,
   recordFileEdit,
   syncSession,
-} from '../src/hooks/session-recorder';
+} from '../../src/hooks/session-recorder';
 
 /**
  * End-to-end capture into a git worktree.
