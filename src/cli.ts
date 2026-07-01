@@ -269,6 +269,12 @@ async function cmdInstall(agent?: string): Promise<void> {
       process.cwd(),
     ),
   );
+
+  fs.mkdirSync(binDir, { recursive: true });
+  // Remove our symlink before searching PATH: a back-link into it (e.g.
+  // ~/.local/bin/assert -> here) then dangles and is skipped, avoiding a cycle.
+  fs.rmSync(destBin, { force: true });
+
   const linkTarget =
     findStableBinPath(
       process.env.PATH ?? '',
@@ -284,11 +290,6 @@ async function cmdInstall(agent?: string): Promise<void> {
       },
     ) ?? currentBin;
 
-  fs.mkdirSync(binDir, { recursive: true });
-  // Replace whatever's there — a prior symlink, or a real binary copied by an
-  // older Assert that copied instead of linked. rmSync(force) also clears a
-  // dangling symlink and never throws when absent.
-  fs.rmSync(destBin, { force: true });
   fs.symlinkSync(linkTarget, destBin);
 
   // Remove leftovers from older copy-based installs (the duplicated dist bundle

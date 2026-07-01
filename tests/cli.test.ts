@@ -207,6 +207,18 @@ describe('CLI integration', () => {
       ).toBe('/opt/homebrew/bin/assert');
     });
 
+    // install removes ~/.assert/bin/assert before searching, so a back-link into
+    // it (~/.local/bin/assert -> there) dangles (realpath null) and is skipped —
+    // otherwise linking to it would form a cycle.
+    it('skips a dangling back-link, choosing the real shim', () => {
+      const running = '/opt/homebrew/Cellar/assert/0.1.6/bin/assert';
+      const pathEnv = ['/home/u/.local/bin', '/opt/homebrew/bin'].join(sep);
+      const realpaths: Record<string, string> = { '/opt/homebrew/bin/assert': running };
+      expect(
+        findStableBinPath(pathEnv, 'assert', '/home/u/.assert/bin', running, (p) => realpaths[p] ?? null),
+      ).toBe('/opt/homebrew/bin/assert');
+    });
+
     it('returns null when no PATH entry resolves to the running binary', () => {
       const pathEnv = ['/usr/bin', '/usr/local/bin'].join(sep);
       expect(
