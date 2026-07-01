@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { createHash } from 'crypto';
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
 // Auto-loaded plugin locations. Claude Code scans ~/.claude/skills; Cursor only
 // scans ~/.cursor/plugins/local (a plain ~/.cursor/plugins/<name> is ignored).
@@ -131,9 +132,6 @@ const CODEX_HOOK_EVENTS: Array<[string, string]> = [
   ['Stop', 'stop'],
 ];
 
-const CODEX_HOOKS_BEGIN = '# >>> assert (managed by `assert install`) >>>';
-const CODEX_HOOKS_END = '# <<< assert (managed by `assert install`) <<<';
-
 function canonicalJson(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(canonicalJson);
   if (v && typeof v === 'object') {
@@ -159,134 +157,93 @@ export function codexHookTrustHash(eventLabel: string, command: string): string 
   return 'sha256:' + createHash('sha256').update(json).digest('hex');
 }
 
-function countCodexHookGroups(config: string, event: string): number {
-  const re = new RegExp(`^\\s*\\[\\[hooks\\.${event}\\]\\]\\s*$`, 'gm');
-  return (config.match(re) ?? []).length;
+type TomlTable = Record<string, unknown>;
+
+interface CodexHook {
+  type?: string;
+  command?: string;
+  [k: string]: unknown;
 }
 
-// `assertBin` is absolute: Codex does not shell-expand command strings. Emits the
-// hooks plus matching trust state so capture runs with no manual approval.
-export function buildCodexConfigBlock(base: string, assertBin: string, configPath: string): string {
-  const hooks: string[] = [];
-  const state: string[] = [];
-  for (const [event, label] of CODEX_HOOK_EVENTS) {
-    const command = `${assertBin} hook codex ${event}`;
-    const index = countCodexHookGroups(base, event);
-    hooks.push('', `[[hooks.${event}]]`, '', `[[hooks.${event}.hooks]]`,
-      'type = "command"', `command = "${command}"`);
-    state.push('', `[hooks.state."${configPath}:${label}:${index}:0"]`,
-      'enabled = true', `trusted_hash = "${codexHookTrustHash(label, command)}"`);
+interface CodexHookGroup {
+  matcher?: string;
+  hooks?: CodexHook[];
+  [k: string]: unknown;
+}
+
+// parent[key] as a table, creating an empty one if missing or not a table.
+function asTable(parent: TomlTable, key: string): TomlTable {
+  const cur = parent[key];
+  if (cur && typeof cur === 'object' && !Array.isArray(cur)) {
+    return cur as TomlTable;
   }
-  return [CODEX_HOOKS_BEGIN, ...hooks, ...state, CODEX_HOOKS_END].join('\n');
+  const next: TomlTable = {};
+  parent[key] = next;
+  return next;
 }
 
-// Inner key path of a TOML table header (`[x]` / `[[x]]`), else null. Skips
-// value lines and multi-line array values (they don't start with `[`, or have
-// commas), matching only headers incl. quoted keys `[hooks.state."a:b:0:0"]`.
-function tomlHeaderName(line: string): string | null {
-  const m = line.match(/^\s*\[\[?(.*?)\]\]?\s*(?:#.*)?$/);
-  if (!m) return null;
-  const inner = m[1];
-  if (inner.length === 0 || inner.includes(',')) return null;
-  return inner.trim();
-}
-
-interface TomlSection {
-  name: string;
-  isArray: boolean; // [[x]] vs [x]
-  lines: string[];
-}
-
-// Split into the preamble plus one section per table header (header + body up
-// to the next header).
-function splitTomlSections(config: string): {
-  preamble: string[];
-  sections: TomlSection[];
-} {
-  const preamble: string[] = [];
-  const sections: TomlSection[] = [];
-  let cur: TomlSection | null = null;
-  for (const line of config.split('\n')) {
-    const name = tomlHeaderName(line);
-    if (name !== null) {
-      cur = { name, isArray: /^\s*\[\[/.test(line), lines: [line] };
-      sections.push(cur);
-    } else if (cur) {
-      cur.lines.push(line);
-    } else {
-      preamble.push(line);
-    }
-  }
-  return { preamble, sections };
-}
-
-// Remove every assert-owned artifact, wherever it lives. Codex reserializes
-// config.toml, hoisting our hooks and trust-state out of the marker block into
-// its own body, so stripping only the block leaves stale copies that stack up
-// over reinstalls until a `hooks.state` key collides (invalid TOML). We match
-// our own signatures — the assert command for hooks, our trust hash under the
-// config-path key prefix for state — so foreign hooks are left untouched.
-function stripAssertCodexHooks(
-  config: string,
-  assertBin: string,
-  configPath: string,
-): string {
-  let base = config;
-  const start = base.indexOf(CODEX_HOOKS_BEGIN);
-  if (start !== -1) {
-    const mark = base.indexOf(CODEX_HOOKS_END, start);
-    const end = mark === -1 ? base.length : mark + CODEX_HOOKS_END.length;
-    base = base.slice(0, start) + base.slice(end);
-  }
-
-  const assertHashes = new Set(
-    CODEX_HOOK_EVENTS.map(([event, label]) =>
-      codexHookTrustHash(label, `${assertBin} hook codex ${event}`)),
-  );
-  const assertCommand = `${assertBin} hook codex `;
-  const stateKeyPrefix = `${configPath}:`;
-
-  const { preamble, sections } = splitTomlSections(base);
-
-  // Drop assert hook sub-tables and assert trust-state tables.
-  const kept = sections.filter((s) => {
-    const body = s.lines.join('\n');
-    const stateKey = s.name.match(/^hooks\.state\."(.*)"$/);
-    if (stateKey) {
-      const hash = body.match(/trusted_hash\s*=\s*"([^"]+)"/)?.[1] ?? '';
-      return !(stateKey[1].startsWith(stateKeyPrefix) && assertHashes.has(hash));
-    }
-    if (/^hooks\.[A-Za-z]+\.hooks$/.test(s.name) && body.includes(assertCommand)) {
-      return false;
-    }
-    return true;
-  });
-
-  // Drop event parents left with no surviving child sub-table.
-  const result = kept.filter((s, i) => {
-    if (s.isArray && /^hooks\.[A-Za-z]+$/.test(s.name)) {
-      return kept[i + 1]?.name === `${s.name}.hooks`;
-    }
-    return true;
-  });
-
-  const parts: string[] = [];
-  const pre = preamble.join('\n').replace(/\s+$/, '');
-  if (pre.length) parts.push(pre);
-  for (const s of result) parts.push(s.lines.join('\n').replace(/\s+$/, ''));
-  return parts.join('\n\n');
-}
-
-// Idempotently install the assert hooks in config.toml: strip any prior assert
-// artifacts, then append one fresh managed block. Everything else is untouched.
+// Merge assert's hooks into Codex's config.toml, idempotently. Each hook joins
+// its event's matcher-less group (the slot Codex keeps stable when it rewrites
+// the file) with a matching hooks.state entry, so Codex trusts it with no
+// prompt. Prior assert hooks and trust entries are replaced; foreign hooks stay.
 export function upsertCodexConfigHooks(
   existing: string | null,
   assertBin: string,
   configPath: string,
 ): string {
-  const base = stripAssertCodexHooks(existing ?? '', assertBin, configPath);
-  const block = buildCodexConfigBlock(base, assertBin, configPath);
-  return base.length ? `${base}\n\n${block}\n` : `${block}\n`;
+  const config: TomlTable =
+    existing && existing.trim() ? (parseToml(existing) as TomlTable) : {};
+
+  const features = asTable(config, 'features');
+  delete features.codex_hooks; // legacy flag name
+  features.hooks = true; // Codex runs hooks only when this is on
+
+  const hooks = asTable(config, 'hooks');
+  const isAssertCommand = (cmd: unknown): boolean =>
+    typeof cmd === 'string' && cmd.startsWith(`${assertBin} hook codex `);
+
+  const positions: Array<[string, number, number, string]> = [];
+  for (const [event, label] of CODEX_HOOK_EVENTS) {
+    const command = `${assertBin} hook codex ${event}`;
+    const groups: CodexHookGroup[] = Array.isArray(hooks[event])
+      ? (hooks[event] as CodexHookGroup[])
+      : [];
+
+    // Drop our prior hooks, and any group we thereby emptied.
+    const cleaned = groups.filter((g) => {
+      const before = Array.isArray(g.hooks) ? g.hooks.length : 0;
+      g.hooks = (g.hooks ?? []).filter((h) => !isAssertCommand(h.command));
+      return g.hooks.length > 0 || before === 0;
+    });
+
+    let idx = cleaned.findIndex((g) => g.matcher === undefined);
+    if (idx === -1) idx = cleaned.push({ hooks: [] }) - 1;
+    const group = cleaned[idx];
+    group.hooks = group.hooks ?? [];
+    positions.push([label, idx, group.hooks.length, command]);
+    group.hooks.push({ type: 'command', command });
+
+    hooks[event] = cleaned;
+  }
+
+  const state = asTable(hooks, 'state');
+  const assertHashes = new Set(
+    CODEX_HOOK_EVENTS.map(([event, label]) =>
+      codexHookTrustHash(label, `${assertBin} hook codex ${event}`)),
+  );
+  for (const key of Object.keys(state)) {
+    if (!key.startsWith(`${configPath}:`)) continue;
+    const hash = (state[key] as TomlTable | undefined)?.trusted_hash;
+    if (assertHashes.has(hash as string)) delete state[key];
+  }
+  for (const [label, groupIdx, handlerIdx, command] of positions) {
+    state[`${configPath}:${label}:${groupIdx}:${handlerIdx}`] = {
+      enabled: true,
+      trusted_hash: codexHookTrustHash(label, command),
+    };
+  }
+
+  return stringifyToml(config) + '\n';
 }
 
 

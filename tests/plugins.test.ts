@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { parse } from 'smol-toml';
 import {
   claudePluginDir,
   cursorPluginDir,
@@ -67,28 +68,53 @@ describe('plugins', () => {
     ).toBe('sha256:cdc0560525a90af8125d5a65d0a05ee33c59be244c05ff384aa1c63c93600587');
   });
 
-  it('writes config.toml hooks with pre-computed trust state, idempotently', () => {
+  const CODEX_EVENTS: ReadonlyArray<readonly [string, string]> = [
+    ['SessionStart', 'session_start'],
+    ['UserPromptSubmit', 'user_prompt_submit'],
+    ['PreToolUse', 'pre_tool_use'],
+    ['PostToolUse', 'post_tool_use'],
+    ['Stop', 'stop'],
+  ];
+
+  it('merges hooks with trust state keyed to the hook slot, idempotently', () => {
     const bin = '/home/u/.assert/bin/assert';
     const cfg = '/home/u/.codex/config.toml';
     const once = upsertCodexConfigHooks('[features]\nhooks = true\n', bin, cfg);
-    expect(once).toContain('[features]');
-    expect(once).toContain('[[hooks.SessionStart.hooks]]');
-    expect(once).toContain('command = "/home/u/.assert/bin/assert hook codex Stop"');
-    expect(once).toContain('[hooks.state."/home/u/.codex/config.toml:session_start:0:0"]');
-    expect(once).toContain('trusted_hash = "sha256:');
+    const parsed = parse(once) as any;
+
+    expect(parsed.features.hooks).toBe(true); // Codex runs hooks only when on
     expect(once).not.toContain('SessionEnd');
-    // Re-running is a no-op (single managed block, stable hashes/indices).
-    const twice = upsertCodexConfigHooks(once, bin, cfg);
-    expect(twice).toBe(once);
-    expect(twice.match(/managed by `assert install`\) >>>/g)).toHaveLength(1);
+
+    // Each event has one hook in a matcher-less group, with a hooks.state entry
+    // keyed to that exact slot and carrying the hash Codex computes for it.
+    for (const [event, label] of CODEX_EVENTS) {
+      const command = `${bin} hook codex ${event}`;
+      const groups = parsed.hooks[event];
+      const gi = groups.findIndex((g: any) => g.matcher === undefined);
+      const hi = groups[gi].hooks.findIndex((hook: any) => hook.command === command);
+      expect(hi).toBeGreaterThanOrEqual(0);
+      const entry = parsed.hooks.state[`${cfg}:${label}:${gi}:${hi}`];
+      expect(entry.enabled).toBe(true);
+      expect(entry.trusted_hash).toBe(codexHookTrustHash(label, command));
+    }
+
+    // Re-running is a no-op.
+    expect(upsertCodexConfigHooks(once, bin, cfg)).toBe(once);
   });
 
-  it('indexes the trust key past pre-existing hook groups for the same event', () => {
+  it('joins the existing matcher-less group and keys trust to that slot', () => {
+    const bin = '/home/u/.assert/bin/assert';
+    const cfg = '/home/u/.codex/config.toml';
     const existing = '[[hooks.Stop]]\n\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "other"\n';
-    const out = upsertCodexConfigHooks(existing, '/home/u/.assert/bin/assert', '/home/u/.codex/config.toml');
-    // Our Stop is the 2nd group (index 1); SessionStart is still index 0.
-    expect(out).toContain('[hooks.state."/home/u/.codex/config.toml:stop:1:0"]');
-    expect(out).toContain('[hooks.state."/home/u/.codex/config.toml:session_start:0:0"]');
+    const parsed = parse(upsertCodexConfigHooks(existing, bin, cfg)) as any;
+    // Our Stop hook joins group 0 (the foreign catch-all) as its 2nd hook.
+    expect(parsed.hooks.Stop).toHaveLength(1);
+    expect(parsed.hooks.Stop[0].hooks.map((hook: any) => hook.command)).toEqual([
+      'other',
+      `${bin} hook codex Stop`,
+    ]);
+    expect(parsed.hooks.state[`${cfg}:stop:0:1`].enabled).toBe(true);
+    expect(parsed.hooks.state[`${cfg}:session_start:0:0`].enabled).toBe(true);
   });
 
   it('reinstalling over a Codex-reserialized config produces no duplicate keys', () => {
@@ -96,7 +122,7 @@ describe('plugins', () => {
     const cfg = '/home/u/.codex/config.toml';
     const h = codexHookTrustHash;
     // Our hooks hoisted into Codex's body (a shared event merged with a foreign
-    // hook), the marker block gone, and stale `:1:0` trust keys left behind.
+    // hook), and stale higher-index trust keys left behind from prior installs.
     const reserialized = [
       '[[hooks.PostToolUse]]',
       '',
@@ -117,14 +143,15 @@ describe('plugins', () => {
       `[hooks.state."${cfg}:post_tool_use:0:0"]`,
       `trusted_hash = "${h('post_tool_use', `${bin} hook codex PostToolUse`)}"`,
       '',
-      `[hooks.state."${cfg}:post_tool_use:0:1"]`,
-      'trusted_hash = "sha256:other"',
-      '',
       `[hooks.state."${cfg}:post_tool_use:1:0"]`,
       `trusted_hash = "${h('post_tool_use', `${bin} hook codex PostToolUse`)}"`,
       '',
       `[hooks.state."${cfg}:session_start:1:0"]`,
       `trusted_hash = "${h('session_start', `${bin} hook codex SessionStart`)}"`,
+      '',
+      // A foreign trust entry (different source prefix) must survive untouched.
+      '[hooks.state."plugin@x:hooks.json:post_tool_use:0:0"]',
+      'trusted_hash = "sha256:foreign"',
       '',
       '[projects."/home/u/work"]',
       'trust_level = "trusted"',
@@ -136,12 +163,13 @@ describe('plugins', () => {
     const stateKeys = [...out.matchAll(/\[hooks\.state\."([^"]+)"\]/g)].map((m) => m[1]);
     expect(new Set(stateKeys).size).toBe(stateKeys.length);
 
-    // One assert hook per event; foreign hook and unrelated sections survive.
-    for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop']) {
+    // One assert hook per event; foreign hook, its trust entry, and unrelated
+    // sections all survive.
+    for (const [event] of CODEX_EVENTS) {
       expect(out.split(`command = "${bin} hook codex ${event}"`).length - 1).toBe(1);
     }
     expect(out.split('command = "other"').length - 1).toBe(1);
-    expect(out).toContain('trusted_hash = "sha256:other"');
+    expect(out).toContain('[hooks.state."plugin@x:hooks.json:post_tool_use:0:0"]');
     expect(out).toContain('[projects."/home/u/work"]');
 
     // Stable: a second pass is a no-op.
