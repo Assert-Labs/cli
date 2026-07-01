@@ -52,11 +52,6 @@ export function hashLine(line: string): string {
   return crypto.createHash('sha256').update(normalized, 'utf-8').digest('hex').substring(0, 16);
 }
 
-// The hash every blank / whitespace-only line collapses to. Such lines carry no
-// content identity, so they are neither attributed to a session nor counted in
-// the contribution ratio.
-const BLANK_LINE_HASH = hashLine('');
-
 /**
  * Create a snapshot of a file's lines
  */
@@ -237,69 +232,6 @@ export function threadAttribution(
 }
 
 /**
- * Build attribution for a file by applying a series of diffs
- * Each diff is tagged with its source (agent session or human)
- */
-export function buildAttribution(
-  currentSnapshot: FileSnapshot,
-  history: Array<{
-    source: 'agent' | 'human';
-    sessionId?: string;
-    turnId?: string;
-    timestamp: string;
-    addedHashes: Set<string>;
-  }>
-): AttributionRecord[] {
-  const attribution: AttributionRecord[] = [];
-
-  for (const line of currentSnapshot.lines) {
-    // Blank / whitespace-only lines carry no content identity: they all
-    // collapse to BLANK_LINE_HASH. Matching them against a session's
-    // added-hashes would attribute *every* blank line in the file to whichever
-    // session happened to add one blank line (e.g. editing a markdown doc claims
-    // all its empty lines). They're not attributable — leave them unknown.
-    if (line.hash === BLANK_LINE_HASH) {
-      attribution.push({
-        lineNumber: line.lineNumber,
-        hash: line.hash,
-        source: 'unknown',
-        timestamp: new Date().toISOString(),
-      });
-      continue;
-    }
-
-    // Find the most recent history entry that introduced this line hash
-    let foundSource: AttributionRecord | null = null;
-
-    for (let i = history.length - 1; i >= 0; i--) {
-      const entry = history[i];
-      if (entry.addedHashes.has(line.hash)) {
-        foundSource = {
-          lineNumber: line.lineNumber,
-          hash: line.hash,
-          source: entry.source,
-          sessionId: entry.sessionId,
-          turnId: entry.turnId,
-          timestamp: entry.timestamp,
-        };
-        break;
-      }
-    }
-
-    attribution.push(
-      foundSource || {
-        lineNumber: line.lineNumber,
-        hash: line.hash,
-        source: 'unknown',
-        timestamp: new Date().toISOString(),
-      }
-    );
-  }
-
-  return attribution;
-}
-
-/**
  * Calculate what percentage of a file's lines are attributed to agents
  */
 export function calculateAgentContribution(attribution: AttributionRecord[]): {
@@ -313,10 +245,6 @@ export function calculateAgentContribution(attribution: AttributionRecord[]): {
   let unknownLines = 0;
 
   for (const record of attribution) {
-    // Blank / whitespace-only lines aren't attributable (see buildAttribution),
-    // so they don't dilute the ratio — a file an agent wrote end to end still
-    // reads as ~100% even though it has blank lines.
-    if (record.hash === BLANK_LINE_HASH) continue;
     switch (record.source) {
       case 'agent':
         agentLines++;
@@ -333,16 +261,4 @@ export function calculateAgentContribution(attribution: AttributionRecord[]): {
   const agentPercentage = total > 0 ? (agentLines / total) * 100 : 0;
 
   return { agentLines, humanLines, unknownLines, agentPercentage };
-}
-
-/**
- * Find which lines in a file match a specific session's contributions
- */
-export function findSessionLines(
-  attribution: AttributionRecord[],
-  sessionId: string
-): number[] {
-  return attribution
-    .filter((r) => r.sessionId === sessionId)
-    .map((r) => r.lineNumber);
 }

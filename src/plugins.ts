@@ -7,6 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { createHash } from 'crypto';
 
 // Auto-loaded plugin locations. Claude Code scans ~/.claude/skills; Cursor only
 // scans ~/.cursor/plugins/local (a plain ~/.cursor/plugins/<name> is ignored).
@@ -18,19 +19,12 @@ export function cursorPluginDir(home: string): string {
   return path.join(home, '.cursor', 'plugins', 'local', 'assert');
 }
 
-// Codex loads plugins through a marketplace, not a fixed auto-load directory.
-// We ship a personal marketplace at ~/.agents/plugins/marketplace.json (a path
-// Codex reads automatically) whose entry points at the bundle under it.
-export function codexPluginDir(home: string): string {
-  return path.join(home, '.agents', 'plugins', 'assert');
+export function codexConfigPath(home: string): string {
+  return path.join(home, '.codex', 'config.toml');
 }
 
-// Codex resolves a personal marketplace's `source.path` relative to $HOME (the
-// directory above `.agents/plugins/`), so the bundle path must be home-relative.
-const CODEX_PLUGIN_SOURCE_PATH = './.agents/plugins/assert';
-
-export function codexMarketplacePath(home: string): string {
-  return path.join(home, '.agents', 'plugins', 'marketplace.json');
+export function codexSkillDir(home: string): string {
+  return path.join(home, '.codex', 'skills', 'assert');
 }
 
 /** Installed Claude Code version (e.g. "2.1.183"), or null if `claude` is absent. */
@@ -127,99 +121,83 @@ ${AGENT_GUIDANCE}
 `;
 }
 
-// Codex hook events Assert subscribes to. Codex mirrors Claude Code's hook
-// schema (same event names and the `{ hooks: [{ type, command }] }` shape), so
-// this matches generateClaudeCodePlugin's output. Codex has no session-end
+// CamelCase config event name -> snake_case trust-state label. No session-end
 // event; `Stop` (per turn) is where the adapter finalizes attribution.
-const CODEX_HOOK_EVENTS = [
-  'SessionStart',
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'Stop',
+const CODEX_HOOK_EVENTS: Array<[string, string]> = [
+  ['SessionStart', 'session_start'],
+  ['UserPromptSubmit', 'user_prompt_submit'],
+  ['PreToolUse', 'pre_tool_use'],
+  ['PostToolUse', 'post_tool_use'],
+  ['Stop', 'stop'],
 ];
 
-export function generateCodexPlugin(
-  version: string,
-  // Absolute path to the installed assert binary. Codex does not shell-expand
-  // command strings (its config uses absolute paths), so we cannot rely on
-  // `$HOME` the way the Claude Code and Cursor hooks do.
-  assertBin: string,
-): { pluginJson: string; hooksJson: string } {
-  const pluginJson = JSON.stringify(
-    {
-      name: 'assert',
-      description: 'Capture AI agent sessions for code attribution',
-      version,
-      author: { name: 'Assert Labs' },
-      skills: './skills/',
-      interface: { displayName: 'Assert' },
-    },
-    null,
-    2,
-  );
+const CODEX_HOOKS_BEGIN = '# >>> assert (managed by `assert install`) >>>';
+const CODEX_HOOKS_END = '# <<< assert (managed by `assert install`) <<<';
 
-  const hooks: Record<string, unknown> = {};
-  for (const event of CODEX_HOOK_EVENTS) {
-    hooks[event] = [
-      {
-        hooks: [{ type: 'command', command: `${assertBin} hook codex ${event}` }],
-      },
-    ];
-  }
-
-  return { pluginJson, hooksJson: JSON.stringify({ hooks }, null, 2) };
-}
-
-interface CodexMarketplace {
-  name: string;
-  interface?: { displayName?: string };
-  plugins: Array<Record<string, unknown>>;
-}
-
-// The marketplace entry Codex uses to find and install the bundle. INSTALLED_BY_DEFAULT
-// so capture is on after a restart without a manual `/plugins` install step.
-function codexPluginEntry(): Record<string, unknown> {
-  return {
-    name: 'assert',
-    source: { source: 'local', path: CODEX_PLUGIN_SOURCE_PATH },
-    policy: { installation: 'INSTALLED_BY_DEFAULT', authentication: 'ON_INSTALL' },
-    category: 'Productivity',
-  };
-}
-
-/**
- * Build the personal-marketplace JSON, upserting the `assert` entry. Preserves
- * any existing marketplace the user maintains at that path (we only own our own
- * entry), and creates a fresh one when `existing` is null or unparseable.
- */
-export function buildCodexMarketplace(existing: string | null): string {
-  let marketplace: CodexMarketplace = {
-    name: 'assert-local',
-    interface: { displayName: 'Assert' },
-    plugins: [],
-  };
-  if (existing) {
-    try {
-      const parsed = JSON.parse(existing) as CodexMarketplace;
-      if (parsed && Array.isArray(parsed.plugins)) {
-        marketplace = parsed;
-      }
-    } catch {
-      /* unparseable: start fresh */
+function canonicalJson(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonicalJson);
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v as Record<string, unknown>).sort()) {
+      out[k] = canonicalJson((v as Record<string, unknown>)[k]);
     }
+    return out;
   }
-
-  const entry = codexPluginEntry();
-  const idx = marketplace.plugins.findIndex((p) => p.name === 'assert');
-  if (idx >= 0) {
-    marketplace.plugins[idx] = entry;
-  } else {
-    marketplace.plugins.push(entry);
-  }
-
-  return JSON.stringify(marketplace, null, 2);
+  return v;
 }
+
+// Reproduces Codex's hook trust hash (codex-rs fingerprint::version_for_toml):
+// sha256 of canonical-JSON of the normalized hook. 600 is Codex's default
+// timeout. Verified against real trusted_hash values; if Codex changes it,
+// capture falls back to a one-time manual trust.
+export function codexHookTrustHash(eventLabel: string, command: string): string {
+  const identity = {
+    event_name: eventLabel,
+    hooks: [{ type: 'command', command, timeout: 600, async: false }],
+  };
+  const json = JSON.stringify(canonicalJson(identity));
+  return 'sha256:' + createHash('sha256').update(json).digest('hex');
+}
+
+function countCodexHookGroups(config: string, event: string): number {
+  const re = new RegExp(`^\\s*\\[\\[hooks\\.${event}\\]\\]\\s*$`, 'gm');
+  return (config.match(re) ?? []).length;
+}
+
+// `assertBin` is absolute: Codex does not shell-expand command strings. Emits the
+// hooks plus matching trust state so capture runs with no manual approval.
+export function buildCodexConfigBlock(base: string, assertBin: string, configPath: string): string {
+  const hooks: string[] = [];
+  const state: string[] = [];
+  for (const [event, label] of CODEX_HOOK_EVENTS) {
+    const command = `${assertBin} hook codex ${event}`;
+    const index = countCodexHookGroups(base, event);
+    hooks.push('', `[[hooks.${event}]]`, '', `[[hooks.${event}.hooks]]`,
+      'type = "command"', `command = "${command}"`);
+    state.push('', `[hooks.state."${configPath}:${label}:${index}:0"]`,
+      'enabled = true', `trusted_hash = "${codexHookTrustHash(label, command)}"`);
+  }
+  return [CODEX_HOOKS_BEGIN, ...hooks, ...state, CODEX_HOOKS_END].join('\n');
+}
+
+// Replace the assert-owned block in config.toml, leaving the rest untouched.
+export function upsertCodexConfigHooks(
+  existing: string | null,
+  assertBin: string,
+  configPath: string,
+): string {
+  let base = existing ?? '';
+  const start = base.indexOf(CODEX_HOOKS_BEGIN);
+  if (start !== -1) {
+    const mark = base.indexOf(CODEX_HOOKS_END, start);
+    const end = mark === -1 ? base.length : mark + CODEX_HOOKS_END.length;
+    base = base.slice(0, start) + base.slice(end);
+  }
+  base = base.replace(/\s*$/, '');
+  const block = buildCodexConfigBlock(base, assertBin, configPath);
+  return base.length ? `${base}\n\n${block}\n` : `${block}\n`;
+}
+
 
 /**
  * Candidate Codex CLI locations, most specific first. Codex ships in several
@@ -283,21 +261,6 @@ export function detectCodexCliVersion(): string | null {
     return m ? m[0] : out.trim() || null;
   } catch {
     return null;
-  }
-}
-
-/** Install the assert plugin via the Codex CLI. Idempotent; best-effort. */
-export function codexPluginInstall(bin: string): { ok: boolean; output: string } {
-  try {
-    const out = execSync(`"${bin}" plugin add assert@assert-local`, {
-      encoding: 'utf-8',
-      timeout: 15000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return { ok: true, output: out.trim() };
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string; message?: string };
-    return { ok: false, output: (err.stderr || err.stdout || err.message || '').trim() };
   }
 }
 

@@ -13,12 +13,12 @@ import {
   recordFileEdit,
   syncSession,
   endSession,
+  blameFile,
 } from '../src/hooks/session-recorder';
 import { processHook } from '../src/hooks/claude-code';
 import { loadState, setCaptureDisabled } from '../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../src/repo-identity';
 import { loadIndex, findSessionsForFiles } from '../src/session-index';
-import { calculateAgentChanges } from '../src/boundaries';
 import { hashLine } from '../src/line-attribution';
 
 describe('git-driven session sync', () => {
@@ -141,7 +141,37 @@ describe('git-driven session sync', () => {
     fs.appendFileSync(path.join(repo, 'base.ts'), 'const added = 2;\n');
     endSession(state, 'completed');
 
-    const changed = calculateAgentChanges(repoId, 's5').get('base.ts')!;
-    expect(changed.added.size).toBe(1);
+    const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
+    const attr = blameFile(repo, 'base.ts', content)!;
+    expect(attr[0].source).toBe('unknown'); // pre-existing 'const base = 1;'
+    expect(attr[1]).toMatchObject({ source: 'agent', sessionId: 's5' }); // added
+  });
+
+  it('threads attribution across sessions and human edits for blame', () => {
+    // Attribution baseline is the file at the session's start ref, so work is
+    // threaded once committed (the normal flow: each contributor commits).
+    const s1 = startSession('b1', 'claude-code', repo);
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const one = 1;\n');
+    endSession(s1, 'completed');
+    git('add -A');
+    git('commit -m s1');
+
+    // A human edits between sessions and commits.
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const human = 0;\n');
+    git('add -A');
+    git('commit -m human');
+
+    const s2 = startSession('b2', 'claude-code', repo);
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const two = 2;\n');
+    endSession(s2, 'completed');
+
+    const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
+    const bySource = new Map(
+      blameFile(repo, 'base.ts', content)!.map((a, i) => [content.split('\n')[i], a]),
+    );
+    expect(bySource.get('const base = 1;')!.source).toBe('unknown');
+    expect(bySource.get('const one = 1;')).toMatchObject({ source: 'agent', sessionId: 'b1' });
+    expect(bySource.get('const human = 0;')!.source).toBe('human');
+    expect(bySource.get('const two = 2;')).toMatchObject({ source: 'agent', sessionId: 'b2' });
   });
 });

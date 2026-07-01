@@ -8,13 +8,13 @@ import { describe, it, expect } from 'vitest';
 import {
   claudePluginDir,
   cursorPluginDir,
-  codexPluginDir,
-  codexMarketplacePath,
+  codexConfigPath,
+  codexSkillDir,
   codexCliCandidates,
+  codexHookTrustHash,
   generateClaudeCodePlugin,
   generateCursorPlugin,
-  generateCodexPlugin,
-  buildCodexMarketplace,
+  upsertCodexConfigHooks,
   skillMd,
 } from '../src/plugins';
 
@@ -53,57 +53,43 @@ describe('plugins', () => {
     expect(recent.hooks.MessageDisplay).toBeDefined();
   });
 
-  it('installs the Codex plugin under the personal marketplace root', () => {
-    expect(codexPluginDir('/home/u')).toBe('/home/u/.agents/plugins/assert');
-    expect(codexMarketplacePath('/home/u')).toBe('/home/u/.agents/plugins/marketplace.json');
+  it('writes Codex hooks to config.toml and the skill under ~/.codex/skills', () => {
+    expect(codexConfigPath('/home/u')).toBe('/home/u/.codex/config.toml');
+    expect(codexSkillDir('/home/u')).toBe('/home/u/.codex/skills/assert');
   });
 
-  it('Codex hooks.json uses the Claude-style shape and an absolute command path', () => {
-    const { hooksJson, pluginJson } = generateCodexPlugin('1.2.3', '/home/u/.assert/bin/assert');
-    const hooks = JSON.parse(hooksJson).hooks;
-    // Same nesting as Claude Code (Codex mirrors its hook schema).
-    expect(hooks.PreToolUse[0].hooks[0]).toEqual({
-      type: 'command',
-      command: '/home/u/.assert/bin/assert hook codex PreToolUse',
-    });
-    expect(hooks.Stop[0].hooks[0].command).toContain('hook codex Stop');
-    // Codex has no session-end event, so we must not subscribe to one.
-    expect(hooks.SessionEnd).toBeUndefined();
-    expect(JSON.parse(pluginJson).version).toBe('1.2.3');
+  it('reproduces Codex trust hashes (locked to real values)', () => {
+    // Verified against actual ~/.codex/config.toml hooks.state entries.
+    expect(
+      codexHookTrustHash('post_tool_use', '/Users/devin/.git-ai/bin/git-ai checkpoint codex --hook-input stdin'),
+    ).toBe('sha256:e468ceb1c401075dc6dc766afc4ec76cc79b8f4240094e05acda7b168016fe07');
+    expect(
+      codexHookTrustHash('session_start', '/Users/devin/.assert/bin/assert hook codex SessionStart'),
+    ).toBe('sha256:75887e86ce590d45417742351517972414613cc838c5f3fa8ec3025080f966e9');
   });
 
-  it('builds a fresh Codex marketplace pointing at the local bundle', () => {
-    const market = JSON.parse(buildCodexMarketplace(null));
-    expect(market.plugins).toHaveLength(1);
-    const entry = market.plugins[0];
-    expect(entry.name).toBe('assert');
-    // Codex resolves a personal marketplace's source.path relative to $HOME.
-    expect(entry.source).toEqual({ source: 'local', path: './.agents/plugins/assert' });
-    expect(entry.policy.installation).toBe('INSTALLED_BY_DEFAULT');
+  it('writes config.toml hooks with pre-computed trust state, idempotently', () => {
+    const bin = '/home/u/.assert/bin/assert';
+    const cfg = '/home/u/.codex/config.toml';
+    const once = upsertCodexConfigHooks('[features]\nhooks = true\n', bin, cfg);
+    expect(once).toContain('[features]');
+    expect(once).toContain('[[hooks.SessionStart.hooks]]');
+    expect(once).toContain('command = "/home/u/.assert/bin/assert hook codex Stop"');
+    expect(once).toContain('[hooks.state."/home/u/.codex/config.toml:session_start:0:0"]');
+    expect(once).toContain('trusted_hash = "sha256:');
+    expect(once).not.toContain('SessionEnd');
+    // Re-running is a no-op (single managed block, stable hashes/indices).
+    const twice = upsertCodexConfigHooks(once, bin, cfg);
+    expect(twice).toBe(once);
+    expect(twice.match(/managed by `assert install`\) >>>/g)).toHaveLength(1);
   });
 
-  it('upserts into an existing Codex marketplace without clobbering other plugins', () => {
-    const existing = JSON.stringify({
-      name: 'my-stuff',
-      plugins: [
-        { name: 'other', source: { source: 'local', path: './other' } },
-        { name: 'assert', source: { source: 'local', path: './stale' } },
-      ],
-    });
-    const market = JSON.parse(buildCodexMarketplace(existing));
-    // Preserves the user's marketplace name and unrelated plugins...
-    expect(market.name).toBe('my-stuff');
-    expect(market.plugins.map((p: { name: string }) => p.name).sort()).toEqual(['assert', 'other']);
-    // ...and refreshes our entry (no stale duplicate).
-    const assertEntries = market.plugins.filter((p: { name: string }) => p.name === 'assert');
-    expect(assertEntries).toHaveLength(1);
-    expect(assertEntries[0].source.path).toBe('./.agents/plugins/assert');
-  });
-
-  it('starts fresh when an existing Codex marketplace is unparseable', () => {
-    const market = JSON.parse(buildCodexMarketplace('{ not json'));
-    expect(market.name).toBe('assert-local');
-    expect(market.plugins).toHaveLength(1);
+  it('indexes the trust key past pre-existing hook groups for the same event', () => {
+    const existing = '[[hooks.Stop]]\n\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "other"\n';
+    const out = upsertCodexConfigHooks(existing, '/home/u/.assert/bin/assert', '/home/u/.codex/config.toml');
+    // Our Stop is the 2nd group (index 1); SessionStart is still index 0.
+    expect(out).toContain('[hooks.state."/home/u/.codex/config.toml:stop:1:0"]');
+    expect(out).toContain('[hooks.state."/home/u/.codex/config.toml:session_start:0:0"]');
   });
 
   it('probes PATH, the desktop app, and CODEX_CLI_PATH for the Codex CLI', () => {

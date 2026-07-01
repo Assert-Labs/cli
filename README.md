@@ -81,13 +81,13 @@ assert install
 
 ## Supported Agents
 
-| Agent       | Plugin Location                   |
-| ----------- | --------------------------------- |
-| Claude Code | `~/.claude/skills/assert/`        |
-| Cursor      | `~/.cursor/plugins/local/assert/` |
-| Codex       | `~/.agents/plugins/assert/`       |
+| Agent       | Plugin Location                                    |
+| ----------- | -------------------------------------------------- |
+| Claude Code | `~/.claude/skills/assert/`                         |
+| Cursor      | `~/.cursor/plugins/local/assert/`                  |
+| Codex       | `~/.codex/config.toml` + `~/.codex/skills/assert/` |
 
-- Codex support requires the **modern Codex CLI** (the Rust build with `codex plugin`/hooks). The legacy `@openai/codex` (`0.1.x`) has no plugin or hook support
+- Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert install` warns when it finds only that version.
 - Support for Devin, OpenCode, Pi, Amp, and more is upcoming.
 - If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
 

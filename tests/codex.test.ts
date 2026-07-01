@@ -10,9 +10,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import { processHook } from '../src/hooks/codex';
-import { loadState, setCaptureDisabled } from '../src/hooks/session-recorder';
+import { loadState, setCaptureDisabled, blameFile } from '../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../src/repo-identity';
-import { loadBoundaries, calculateAgentChanges } from '../src/boundaries';
 import { hashLine } from '../src/line-attribution';
 
 describe('codex hook adapter', () => {
@@ -101,15 +100,20 @@ describe('codex hook adapter', () => {
     write('feature.ts', 'line one\nline two\n');
     await hook('Stop', { last_assistant_message: 'second' });
 
-    // Exactly one start/end boundary pair survives — not one per Stop.
-    const boundaries = loadBoundaries(repoId).boundaries.filter((b) => b.sessionId === 's1');
-    expect(boundaries.filter((b) => b.type === 'start')).toHaveLength(1);
-    expect(boundaries.filter((b) => b.type === 'end')).toHaveLength(1);
+    // The session file is rewritten each Stop, so exactly one line_attribution
+    // per file survives — not one per Stop.
+    const lineAttrs = readEvents('s1').filter(
+      (e) => e.type === 'line_attribution' && e.filePath === 'feature.ts',
+    );
+    expect(lineAttrs).toHaveLength(1);
 
     // Blame reflects the latest turn (both added lines), not a stale snapshot.
-    const changed = calculateAgentChanges(repoId, 's1').get('feature.ts')!;
-    expect(changed.added.has(hashLine('line one'))).toBe(true);
-    expect(changed.added.has(hashLine('line two'))).toBe(true);
+    const content = fs.readFileSync(path.join(repo, 'feature.ts'), 'utf-8');
+    const bySource = new Map(
+      blameFile(repo, 'feature.ts', content)!.map((a, i) => [content.split('\n')[i], a]),
+    );
+    expect(bySource.get('line one')?.source).toBe('agent');
+    expect(bySource.get('line two')?.source).toBe('agent');
   });
 
   it('ignores hooks for an unknown session', async () => {

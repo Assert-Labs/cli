@@ -29,15 +29,21 @@ import {
   getSessionsDir,
   ensureSessionsDir,
 } from '../session-index';
-import { recordBoundary, removeSessionBoundaries } from '../boundaries';
 import {
   type SessionEvent,
   type SessionStartEvent,
-  type AttributionEvent,
+  type LineOwnership,
+  type LineAttributionEvent,
   serializeSessionEvent,
 } from '../schema';
 import { normalizeClaudeTranscript } from '../transcript';
-import { hashLine } from '../line-attribution';
+import {
+  hashLine,
+  createFileSnapshot,
+  carryAttribution,
+  type FileSnapshot,
+  type AttributionRecord,
+} from '../line-attribution';
 
 /** A single repo touched by a session. */
 export interface TouchedRepo {
@@ -184,41 +190,176 @@ function sessionModelId(sessionFile: string): string | undefined {
   return undefined;
 }
 
+const EMPTY_LINE_HASH = hashLine('');
+
+/** A snapshot with no lines — a file that didn't exist (all of `after` is new). */
+function emptySnapshot(filePath: string): FileSnapshot {
+  return { filePath, lines: [], contentHash: '' };
+}
+
+/** Reconstruct a snapshot / attribution from a stored line_attribution event. */
+function snapshotFromOwnership(filePath: string, lines: LineOwnership[]): FileSnapshot {
+  return {
+    filePath,
+    lines: lines.map((l, i) => ({ lineNumber: i + 1, hash: l.hash, content: '' })),
+    contentHash: '',
+  };
+}
+function attributionFromOwnership(lines: LineOwnership[]): AttributionRecord[] {
+  return lines.map((l, i) => ({
+    lineNumber: i + 1,
+    hash: l.hash,
+    source: l.source,
+    sessionId: l.sessionId,
+    timestamp: '',
+  }));
+}
+
 /**
- * Attribution fragments for a repo: per changed file, the content hashes of lines
- * the agent added (vs the baseline at startRef). The portable source for traces.
+ * The most recent committed line_attribution for a file, across the repo's
+ * `.sessions/`, excluding `excludeSessionId` (this session, for idempotent
+ * re-finalize). Null if none.
  */
-function attributionEvents(
+export function latestLineAttribution(
+  gitRoot: string,
+  filePath: string,
+  excludeSessionId?: string,
+): LineAttributionEvent | null {
+  const dir = path.join(gitRoot, '.sessions');
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
+  } catch {
+    return null;
+  }
+  let latest: LineAttributionEvent | null = null;
+  for (const file of files) {
+    for (const line of fs.readFileSync(path.join(dir, file), 'utf-8').split('\n')) {
+      if (!line.trim()) continue;
+      let ev: SessionEvent;
+      try {
+        ev = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (
+        ev.type === 'line_attribution' &&
+        ev.filePath === filePath &&
+        ev.sessionId !== excludeSessionId &&
+        (!latest || ev.timestamp > latest.timestamp)
+      ) {
+        latest = ev;
+      }
+    }
+  }
+  return latest;
+}
+
+/**
+ * Per changed file, thread per-line ownership prev(committed) -> baseline(start)
+ * -> current(end): human edits between sessions carry over, this session's
+ * insertions become the agent's. Emits a line_attribution event (for blame) and
+ * an attribution event of the agent's own lines (for traces).
+ */
+function fileAttributions(
   state: SessionState,
   repo: TouchedRepo,
   changed: string[],
   baseline: Map<string, string>,
   modelId: string | undefined,
-): AttributionEvent[] {
-  const events: AttributionEvent[] = [];
+): SessionEvent[] {
+  const events: SessionEvent[] = [];
+  const timestamp = new Date().toISOString();
+  const agent = { source: 'agent' as const, sessionId: state.sessionId, timestamp };
+
   for (const f of changed) {
-    let current: string;
+    let endContent: string;
     try {
-      current = fs.readFileSync(path.join(repo.gitRoot, f), 'utf-8');
+      endContent = fs.readFileSync(path.join(repo.gitRoot, f), 'utf-8');
     } catch {
-      continue; // deleted — no lines to attribute
+      continue; // deleted — nothing to attribute
     }
-    const base = baseline.get(f) ?? '';
-    const baseHashes = new Set(base ? base.split('\n').map(hashLine) : []);
-    const added = [...new Set(current.split('\n').map(hashLine).filter((h) => !baseHashes.has(h)))];
-    if (!added.length) continue;
+    const endSnap = createFileSnapshot(f, endContent);
+    const baseContent = baseline.get(f) ?? '';
+    const baseSnap = baseContent ? createFileSnapshot(f, baseContent) : emptySnapshot(f);
+
+    const prev = latestLineAttribution(repo.gitRoot, f, state.sessionId);
+    let curSnap: FileSnapshot;
+    let curAttr: AttributionRecord[];
+    if (prev) {
+      curAttr = carryAttribution(
+        snapshotFromOwnership(f, prev.lines),
+        attributionFromOwnership(prev.lines),
+        baseSnap,
+        { source: 'human', timestamp },
+      );
+      curSnap = baseSnap;
+    } else {
+      curSnap = baseSnap;
+      curAttr = baseSnap.lines.map((l) => ({
+        lineNumber: l.lineNumber,
+        hash: l.hash,
+        source: 'unknown' as const,
+        timestamp: '',
+      }));
+    }
+    const endAttr = carryAttribution(curSnap, curAttr, endSnap, agent);
+
     events.push({
-      type: 'attribution',
-      timestamp: new Date().toISOString(),
+      type: 'line_attribution',
+      timestamp,
       sessionId: state.sessionId,
       filePath: f,
       vcsRevision: repo.startRef,
-      operation: base ? 'modify' : 'create',
-      contributor: { type: 'ai', modelId },
-      lineHashes: added,
+      lines: endAttr.map((a) => ({
+        hash: a.hash,
+        source: a.source,
+        ...(a.sessionId ? { sessionId: a.sessionId } : {}),
+      })),
     });
+
+    // Agent's own lines (excluding blanks, which carry no identity) for traces.
+    const aiHashes = [
+      ...new Set(
+        endAttr
+          .filter((a) => a.source === 'agent' && a.sessionId === state.sessionId && a.hash !== EMPTY_LINE_HASH)
+          .map((a) => a.hash),
+      ),
+    ];
+    if (aiHashes.length) {
+      events.push({
+        type: 'attribution',
+        timestamp,
+        sessionId: state.sessionId,
+        filePath: f,
+        vcsRevision: repo.startRef,
+        operation: baseContent ? 'modify' : 'create',
+        contributor: { type: 'ai', modelId },
+        lineHashes: aiHashes,
+      });
+    }
   }
   return events;
+}
+
+/**
+ * Per-line attribution of `filePath`'s working-tree content: the latest
+ * committed ownership aligned to the current file (edits since = human). Null if
+ * no session has attributed the file. Powers `assert blame`.
+ */
+export function blameFile(
+  gitRoot: string,
+  filePath: string,
+  currentContent: string,
+): AttributionRecord[] | null {
+  const prev = latestLineAttribution(gitRoot, filePath);
+  if (!prev) return null;
+  return carryAttribution(
+    snapshotFromOwnership(filePath, prev.lines),
+    attributionFromOwnership(prev.lines),
+    createFileSnapshot(filePath, currentContent),
+    { source: 'human', timestamp: '' },
+  );
 }
 
 /** Patterns from a repo's `.assertignore` (gitignore-ish: `*`, `**`, trailing `/`). */
@@ -368,8 +509,8 @@ function resolveSessionFile(state: SessionState, transcriptPath?: string): strin
  * Sync the session into one repo: find what the agent changed there via git
  * (any change, however made), honoring `.assertignore`. Writes the session
  * (consistent schema) into `<repo>/.sessions/<id>.jsonl`. On `final`, also
- * appends portable `attribution` events (for traces) and records boundaries
- * (for `assert blame`).
+ * appends threaded per-line attribution (for `assert blame`) and portable
+ * `attribution` events (for traces).
  */
 function syncRepo(
   state: SessionState,
@@ -394,15 +535,12 @@ function syncRepo(
   }
 
   if (final) {
-    // Idempotent: an agent without a session-end hook (Codex) finalizes on every
-    // turn, so clear any prior boundaries for this session before re-recording.
-    removeSessionBoundaries(repo.repoId, state.sessionId);
     const baseline = new Map<string, string>();
     for (const f of changed) baseline.set(f, fileAtRef(repo.gitRoot, repo.startRef, f) ?? '');
-    recordBoundary(repo.repoId, state.sessionId, 'start', repo.gitRoot, changed, repo.startRef, baseline);
-    recordBoundary(repo.repoId, state.sessionId, 'end', repo.gitRoot, changed);
 
-    const attrs = attributionEvents(state, repo, changed, baseline, modelId);
+    // Re-finalize is idempotent: threading reads the latest committed attribution
+    // excluding this session, so re-running just rewrites this session's events.
+    const attrs = fileAttributions(state, repo, changed, baseline, modelId);
     if (attrs.length) {
       const serialized = attrs.map(serializeSessionEvent).join('\n');
       body = body ? `${body}\n${serialized}` : serialized;

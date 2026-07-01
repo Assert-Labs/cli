@@ -122,6 +122,20 @@ export interface AttributionEvent extends BaseEvent {
   lineHashes: string[];
 }
 
+// Per-line ownership of a file's end state, threaded across sessions. The most
+// recent one for a file is the source `assert blame` aligns to the working tree.
+export interface LineOwnership {
+  hash: string;
+  source: 'agent' | 'human' | 'unknown';
+  sessionId?: string;
+}
+export interface LineAttributionEvent extends BaseEvent {
+  type: 'line_attribution';
+  filePath: string;
+  vcsRevision?: string;
+  lines: LineOwnership[];
+}
+
 // === Union Types ===
 
 export type SessionEvent =
@@ -136,7 +150,8 @@ export type SessionEvent =
   | ToolResultEvent
   | BranchSwitchEvent
   | FileAttributionEvent
-  | AttributionEvent;
+  | AttributionEvent
+  | LineAttributionEvent;
 
 // === Supporting Types ===
 

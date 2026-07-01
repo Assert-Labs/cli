@@ -10,19 +10,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { processHook, type AgentType } from './hooks/index';
-import { captureDisabled, setCaptureDisabled } from './hooks/session-recorder';
+import { captureDisabled, setCaptureDisabled, blameFile } from './hooks/session-recorder';
 import {
   claudePluginDir,
   cursorPluginDir,
-  codexPluginDir,
-  codexMarketplacePath,
+  codexConfigPath,
+  codexSkillDir,
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
-  generateCodexPlugin,
-  buildCodexMarketplace,
+  upsertCodexConfigHooks,
   findCodexCli,
-  codexPluginInstall,
   detectCodexCliVersion,
   skillMd,
 } from './plugins';
@@ -37,17 +35,9 @@ import { findGitRoot, getGitState, fileAtRef } from './git-watcher';
 import { buildTrace } from './agent-trace';
 import { type AttributionEvent } from './schema';
 import { getRepoId } from './repo-identity';
-import {
-  getSessionsDir,
-  loadIndex,
-  findSessionsForFiles,
-} from './session-index';
-import { calculateAgentChanges } from './boundaries';
-import {
-  createFileSnapshot,
-  buildAttribution,
-  calculateAgentContribution,
-} from './line-attribution';
+import { getSessionsDir, loadIndex } from './session-index';
+
+import { calculateAgentContribution } from './line-attribution';
 
 // === Helpers ===
 
@@ -161,53 +151,39 @@ function installCursorPlugin(home: string): void {
 }
 
 function installCodexPlugin(home: string): void {
-  // Codex loads plugins via a marketplace rather than a fixed auto-load dir, so
-  // we write the bundle plus a personal marketplace entry that points at it.
-  const dir = codexPluginDir(home);
   const assertBin = path.join(home, '.assert', 'bin', 'assert');
-  writePlugin(dir, '.codex-plugin', generateCodexPlugin(VERSION, assertBin));
-  writeSkill(dir);
 
-  const marketplacePath = codexMarketplacePath(home);
-  let existing: string | null = null;
+  const skillDir = codexSkillDir(home);
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMd());
+
+  const configPath = codexConfigPath(home);
+  let config: string | null = null;
   try {
-    existing = fs.readFileSync(marketplacePath, 'utf-8');
+    config = fs.readFileSync(configPath, 'utf-8');
   } catch {
-    /* no marketplace yet */
+    /* no config yet */
   }
-  fs.mkdirSync(path.dirname(marketplacePath), { recursive: true });
-  fs.writeFileSync(marketplacePath, buildCodexMarketplace(existing) + '\n');
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(
+    configPath,
+    upsertCodexConfigHooks(config, assertBin, configPath),
+  );
 
-  // Unlike Claude/Cursor (which auto-load from a directory), Codex needs an
-  // explicit install from the marketplace, and only the modern (Rust) Codex
-  // supports plugins/hooks at all — the legacy `@openai/codex` does not. Install
-  // for the user when a plugin-capable CLI is found; otherwise say why.
+  log(
+    '✓ Codex (hooks added to ~/.codex/config.toml — restart Codex to start capture)',
+  );
+
   const cli = findCodexCli(home);
   const pathVersion = detectCodexCliVersion();
-
-  if (cli) {
-    const installed = codexPluginInstall(cli).ok;
-    log(
-      installed
-        ? '✓ Codex (plugin installed — trust its hooks once in Codex to start capture)'
-        : '✓ Codex — finish with: codex plugin add assert@assert-local (then trust its hooks)',
-    );
-    // The plugin-capable binary may not be the `codex` on PATH (a stale,
-    // pre-plugins CLI can shadow it). Warn so capture isn't silently missing.
-    if (pathVersion && cli !== 'codex') {
-      warn(
-        `your \`codex\` on PATH (v${pathVersion}) predates plugin support; ` +
-          'capture runs only with a modern Codex CLI or the Codex app.',
-      );
-    }
-  } else if (pathVersion) {
+  if (pathVersion && !cli) {
     warn(
-      `Codex v${pathVersion} does not support plugins; assert capture needs a newer Codex CLI.`,
+      `Codex v${pathVersion} does not support hooks; assert capture needs a newer Codex CLI.`,
     );
-    log('  Upgrade Codex, then re-run `assert install codex`.');
-  } else {
-    log(
-      '✓ Codex bundle written — run `codex plugin add assert@assert-local` with a plugin-capable Codex.',
+  } else if (pathVersion && cli !== 'codex') {
+    warn(
+      `your \`codex\` on PATH (v${pathVersion}) predates hook support; ` +
+        'capture runs only with a modern Codex CLI or the Codex app.',
     );
   }
 }
@@ -620,19 +596,15 @@ async function cmdBlame(filePath: string): Promise<void> {
     process.exit(1);
   }
 
-  const { repoId, gitRoot } = repoInfo;
+  const { gitRoot } = repoInfo;
   const relativePath = path.relative(gitRoot, absolutePath);
+  const content = fs.readFileSync(absolutePath, 'utf-8');
 
-  // Get sessions that touched this file
-  const index = loadIndex();
-  const sessionIds = findSessionsForFiles(index, repoId, [relativePath]);
-
-  if (sessionIds.length === 0) {
+  const attribution = blameFile(gitRoot, relativePath, content);
+  if (!attribution) {
     log(`No agent sessions found for ${relativePath}`);
     log('Showing file without attribution...');
     console.log('');
-
-    const content = fs.readFileSync(absolutePath, 'utf-8');
     const lines = content.split('\n');
     for (let i = 0; i < lines.length; i++) {
       console.log(`${String(i + 1).padStart(4)}  (unknown)  ${lines[i]}`);
@@ -640,37 +612,6 @@ async function cmdBlame(filePath: string): Promise<void> {
     return;
   }
 
-  // Build attribution history from sessions
-  const history: Array<{
-    source: 'agent' | 'human';
-    sessionId?: string;
-    turnId?: string;
-    timestamp: string;
-    addedHashes: Set<string>;
-  }> = [];
-
-  for (const sessionId of sessionIds) {
-    const changes = calculateAgentChanges(repoId, sessionId);
-    const fileChanges = changes.get(relativePath);
-    if (fileChanges && fileChanges.added.size > 0) {
-      history.push({
-        source: 'agent',
-        sessionId,
-        timestamp: index.sessions[sessionId]?.startTime || '',
-        addedHashes: fileChanges.added,
-      });
-    }
-  }
-
-  // Sort history by timestamp
-  history.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-  // Create current file snapshot
-  const content = fs.readFileSync(absolutePath, 'utf-8');
-  const snapshot = createFileSnapshot(relativePath, content);
-
-  // Build attribution
-  const attribution = buildAttribution(snapshot, history);
   const contribution = calculateAgentContribution(attribution);
 
   // Display header

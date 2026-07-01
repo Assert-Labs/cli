@@ -4,10 +4,8 @@ import {
   hashLine,
   createFileSnapshot,
   diffSnapshots,
-  buildAttribution,
   threadAttribution,
   calculateAgentContribution,
-  findSessionLines,
   type FileSnapshot,
 } from '../src/line-attribution';
 
@@ -201,101 +199,6 @@ describe('line-attribution', () => {
     }
   });
 
-  describe('buildAttribution', () => {
-    it('attributes lines to correct session', () => {
-      const snapshot = createFileSnapshot('test.ts', 'line 1\nline 2\nline 3');
-
-      const history = [
-        {
-          source: 'agent' as const,
-          sessionId: 'session-1',
-          turnId: 'turn-1',
-          timestamp: '2024-01-01T00:00:00Z',
-          addedHashes: new Set([snapshot.lines[0].hash, snapshot.lines[1].hash]),
-        },
-        {
-          source: 'human' as const,
-          timestamp: '2024-01-01T01:00:00Z',
-          addedHashes: new Set([snapshot.lines[2].hash]),
-        },
-      ];
-
-      const attribution = buildAttribution(snapshot, history);
-
-      expect(attribution[0].source).toBe('agent');
-      expect(attribution[0].sessionId).toBe('session-1');
-      expect(attribution[1].source).toBe('agent');
-      expect(attribution[2].source).toBe('human');
-    });
-
-    it('uses most recent source for duplicated lines', () => {
-      const snapshot = createFileSnapshot('test.ts', 'duplicated');
-      const lineHash = snapshot.lines[0].hash;
-
-      const history = [
-        {
-          source: 'agent' as const,
-          sessionId: 'session-1',
-          timestamp: '2024-01-01T00:00:00Z',
-          addedHashes: new Set([lineHash]),
-        },
-        {
-          source: 'human' as const,
-          timestamp: '2024-01-01T01:00:00Z',
-          addedHashes: new Set([lineHash]),
-        },
-      ];
-
-      const attribution = buildAttribution(snapshot, history);
-
-      // Human modified it last
-      expect(attribution[0].source).toBe('human');
-    });
-
-    it('marks unknown lines', () => {
-      const snapshot = createFileSnapshot('test.ts', 'mystery line');
-
-      const attribution = buildAttribution(snapshot, []);
-
-      expect(attribution[0].source).toBe('unknown');
-    });
-
-    it('never attributes blank lines to a session (markdown blame regression)', () => {
-      // A markdown doc with human-authored blank lines. The agent session adds a
-      // heading; because any multi-line edit / new-file diff includes the empty
-      // hash in its added set, the bug attributed *every* blank line to the
-      // session. Simulate that by putting the empty hash in addedHashes.
-      const content = '# Title\n\nintro paragraph\n\nclosing paragraph\n';
-      const snapshot = createFileSnapshot('doc.md', content);
-      const blankLineIndexes = snapshot.lines
-        .map((l, i) => (l.content.trim() === '' ? i : -1))
-        .filter((i) => i >= 0);
-      expect(blankLineIndexes.length).toBeGreaterThan(0); // sanity: doc has blanks
-
-      const history = [
-        {
-          source: 'agent' as const,
-          sessionId: 'session-1',
-          timestamp: '2024-01-01T00:00:00Z',
-          addedHashes: new Set([hashLine('# Title'), hashLine('')]),
-        },
-      ];
-
-      const attribution = buildAttribution(snapshot, history);
-
-      // The real line the session added is still attributed to it.
-      expect(attribution[0].source).toBe('agent');
-      expect(attribution[0].sessionId).toBe('session-1');
-
-      // Every blank line stays unknown — none claimed by the session.
-      for (const i of blankLineIndexes) {
-        expect(attribution[i].source).toBe('unknown');
-        expect(attribution[i].sessionId).toBeUndefined();
-      }
-      expect(findSessionLines(attribution, 'session-1')).toEqual([1]);
-    });
-  });
-
   describe('threadAttribution', () => {
     it('does not claim pre-existing blank lines when a session edits the file', () => {
       // The markdown blame bug: hash-set matching claimed every blank line.
@@ -369,39 +272,6 @@ describe('line-attribution', () => {
 
       expect(result.agentLines).toBe(0);
       expect(result.agentPercentage).toBe(0);
-    });
-
-    it('excludes blank lines from the ratio (agent-authored file stays 100%)', () => {
-      // 3 agent content lines + 2 blank lines (which hash to hashLine('')).
-      const blank = hashLine('');
-      const attribution = [
-        { lineNumber: 1, hash: 'a', source: 'agent' as const, timestamp: '' },
-        { lineNumber: 2, hash: blank, source: 'unknown' as const, timestamp: '' },
-        { lineNumber: 3, hash: 'b', source: 'agent' as const, timestamp: '' },
-        { lineNumber: 4, hash: blank, source: 'unknown' as const, timestamp: '' },
-        { lineNumber: 5, hash: 'c', source: 'agent' as const, timestamp: '' },
-      ];
-
-      const result = calculateAgentContribution(attribution);
-
-      expect(result.agentLines).toBe(3);
-      expect(result.unknownLines).toBe(0); // blank lines not counted as unknown
-      expect(result.agentPercentage).toBe(100);
-    });
-  });
-
-  describe('findSessionLines', () => {
-    it('finds lines for a specific session', () => {
-      const attribution = [
-        { lineNumber: 1, hash: 'a', source: 'agent' as const, sessionId: 's1', timestamp: '' },
-        { lineNumber: 2, hash: 'b', source: 'agent' as const, sessionId: 's2', timestamp: '' },
-        { lineNumber: 3, hash: 'c', source: 'agent' as const, sessionId: 's1', timestamp: '' },
-        { lineNumber: 4, hash: 'd', source: 'human' as const, timestamp: '' },
-      ];
-
-      const lines = findSessionLines(attribution, 's1');
-
-      expect(lines).toEqual([1, 3]);
     });
   });
 
