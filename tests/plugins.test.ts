@@ -58,14 +58,13 @@ describe('plugins', () => {
     expect(codexSkillDir('/home/u')).toBe('/home/u/.codex/skills/assert');
   });
 
-  it('reproduces Codex trust hashes (locked to real values)', () => {
-    // Verified against actual ~/.codex/config.toml hooks.state entries.
+  it('reproduces Codex trust hashes (locked to Codex fingerprint algorithm)', () => {
     expect(
-      codexHookTrustHash('post_tool_use', '/Users/devin/.git-ai/bin/git-ai checkpoint codex --hook-input stdin'),
-    ).toBe('sha256:e468ceb1c401075dc6dc766afc4ec76cc79b8f4240094e05acda7b168016fe07');
+      codexHookTrustHash('session_start', '/home/u/.assert/bin/assert hook codex SessionStart'),
+    ).toBe('sha256:befa9a0b1858bd0854da8558edf920c6312d776efe1e8f56841d36b2da457496');
     expect(
-      codexHookTrustHash('session_start', '/Users/devin/.assert/bin/assert hook codex SessionStart'),
-    ).toBe('sha256:75887e86ce590d45417742351517972414613cc838c5f3fa8ec3025080f966e9');
+      codexHookTrustHash('post_tool_use', '/home/u/.assert/bin/assert hook codex PostToolUse'),
+    ).toBe('sha256:cdc0560525a90af8125d5a65d0a05ee33c59be244c05ff384aa1c63c93600587');
   });
 
   it('writes config.toml hooks with pre-computed trust state, idempotently', () => {
@@ -90,6 +89,63 @@ describe('plugins', () => {
     // Our Stop is the 2nd group (index 1); SessionStart is still index 0.
     expect(out).toContain('[hooks.state."/home/u/.codex/config.toml:stop:1:0"]');
     expect(out).toContain('[hooks.state."/home/u/.codex/config.toml:session_start:0:0"]');
+  });
+
+  it('reinstalling over a Codex-reserialized config produces no duplicate keys', () => {
+    const bin = '/home/u/.assert/bin/assert';
+    const cfg = '/home/u/.codex/config.toml';
+    const h = codexHookTrustHash;
+    // Our hooks hoisted into Codex's body (a shared event merged with a foreign
+    // hook), the marker block gone, and stale `:1:0` trust keys left behind.
+    const reserialized = [
+      '[[hooks.PostToolUse]]',
+      '',
+      '[[hooks.PostToolUse.hooks]]',
+      `command = "${bin} hook codex PostToolUse"`,
+      'type = "command"',
+      '',
+      '[[hooks.PostToolUse.hooks]]',
+      'command = "other"',
+      'type = "command"',
+      '',
+      '[[hooks.SessionStart]]',
+      '',
+      '[[hooks.SessionStart.hooks]]',
+      `command = "${bin} hook codex SessionStart"`,
+      'type = "command"',
+      '',
+      `[hooks.state."${cfg}:post_tool_use:0:0"]`,
+      `trusted_hash = "${h('post_tool_use', `${bin} hook codex PostToolUse`)}"`,
+      '',
+      `[hooks.state."${cfg}:post_tool_use:0:1"]`,
+      'trusted_hash = "sha256:other"',
+      '',
+      `[hooks.state."${cfg}:post_tool_use:1:0"]`,
+      `trusted_hash = "${h('post_tool_use', `${bin} hook codex PostToolUse`)}"`,
+      '',
+      `[hooks.state."${cfg}:session_start:1:0"]`,
+      `trusted_hash = "${h('session_start', `${bin} hook codex SessionStart`)}"`,
+      '',
+      '[projects."/home/u/work"]',
+      'trust_level = "trusted"',
+      '',
+    ].join('\n');
+
+    const out = upsertCodexConfigHooks(reserialized, bin, cfg);
+
+    const stateKeys = [...out.matchAll(/\[hooks\.state\."([^"]+)"\]/g)].map((m) => m[1]);
+    expect(new Set(stateKeys).size).toBe(stateKeys.length);
+
+    // One assert hook per event; foreign hook and unrelated sections survive.
+    for (const event of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop']) {
+      expect(out.split(`command = "${bin} hook codex ${event}"`).length - 1).toBe(1);
+    }
+    expect(out.split('command = "other"').length - 1).toBe(1);
+    expect(out).toContain('trusted_hash = "sha256:other"');
+    expect(out).toContain('[projects."/home/u/work"]');
+
+    // Stable: a second pass is a no-op.
+    expect(upsertCodexConfigHooks(out, bin, cfg)).toBe(out);
   });
 
   it('probes PATH, the desktop app, and CODEX_CLI_PATH for the Codex CLI', () => {

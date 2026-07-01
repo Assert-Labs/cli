@@ -180,20 +180,111 @@ export function buildCodexConfigBlock(base: string, assertBin: string, configPat
   return [CODEX_HOOKS_BEGIN, ...hooks, ...state, CODEX_HOOKS_END].join('\n');
 }
 
-// Replace the assert-owned block in config.toml, leaving the rest untouched.
-export function upsertCodexConfigHooks(
-  existing: string | null,
+// Inner key path of a TOML table header (`[x]` / `[[x]]`), else null. Skips
+// value lines and multi-line array values (they don't start with `[`, or have
+// commas), matching only headers incl. quoted keys `[hooks.state."a:b:0:0"]`.
+function tomlHeaderName(line: string): string | null {
+  const m = line.match(/^\s*\[\[?(.*?)\]\]?\s*(?:#.*)?$/);
+  if (!m) return null;
+  const inner = m[1];
+  if (inner.length === 0 || inner.includes(',')) return null;
+  return inner.trim();
+}
+
+interface TomlSection {
+  name: string;
+  isArray: boolean; // [[x]] vs [x]
+  lines: string[];
+}
+
+// Split into the preamble plus one section per table header (header + body up
+// to the next header).
+function splitTomlSections(config: string): {
+  preamble: string[];
+  sections: TomlSection[];
+} {
+  const preamble: string[] = [];
+  const sections: TomlSection[] = [];
+  let cur: TomlSection | null = null;
+  for (const line of config.split('\n')) {
+    const name = tomlHeaderName(line);
+    if (name !== null) {
+      cur = { name, isArray: /^\s*\[\[/.test(line), lines: [line] };
+      sections.push(cur);
+    } else if (cur) {
+      cur.lines.push(line);
+    } else {
+      preamble.push(line);
+    }
+  }
+  return { preamble, sections };
+}
+
+// Remove every assert-owned artifact, wherever it lives. Codex reserializes
+// config.toml, hoisting our hooks and trust-state out of the marker block into
+// its own body, so stripping only the block leaves stale copies that stack up
+// over reinstalls until a `hooks.state` key collides (invalid TOML). We match
+// our own signatures — the assert command for hooks, our trust hash under the
+// config-path key prefix for state — so foreign hooks are left untouched.
+function stripAssertCodexHooks(
+  config: string,
   assertBin: string,
   configPath: string,
 ): string {
-  let base = existing ?? '';
+  let base = config;
   const start = base.indexOf(CODEX_HOOKS_BEGIN);
   if (start !== -1) {
     const mark = base.indexOf(CODEX_HOOKS_END, start);
     const end = mark === -1 ? base.length : mark + CODEX_HOOKS_END.length;
     base = base.slice(0, start) + base.slice(end);
   }
-  base = base.replace(/\s*$/, '');
+
+  const assertHashes = new Set(
+    CODEX_HOOK_EVENTS.map(([event, label]) =>
+      codexHookTrustHash(label, `${assertBin} hook codex ${event}`)),
+  );
+  const assertCommand = `${assertBin} hook codex `;
+  const stateKeyPrefix = `${configPath}:`;
+
+  const { preamble, sections } = splitTomlSections(base);
+
+  // Drop assert hook sub-tables and assert trust-state tables.
+  const kept = sections.filter((s) => {
+    const body = s.lines.join('\n');
+    const stateKey = s.name.match(/^hooks\.state\."(.*)"$/);
+    if (stateKey) {
+      const hash = body.match(/trusted_hash\s*=\s*"([^"]+)"/)?.[1] ?? '';
+      return !(stateKey[1].startsWith(stateKeyPrefix) && assertHashes.has(hash));
+    }
+    if (/^hooks\.[A-Za-z]+\.hooks$/.test(s.name) && body.includes(assertCommand)) {
+      return false;
+    }
+    return true;
+  });
+
+  // Drop event parents left with no surviving child sub-table.
+  const result = kept.filter((s, i) => {
+    if (s.isArray && /^hooks\.[A-Za-z]+$/.test(s.name)) {
+      return kept[i + 1]?.name === `${s.name}.hooks`;
+    }
+    return true;
+  });
+
+  const parts: string[] = [];
+  const pre = preamble.join('\n').replace(/\s+$/, '');
+  if (pre.length) parts.push(pre);
+  for (const s of result) parts.push(s.lines.join('\n').replace(/\s+$/, ''));
+  return parts.join('\n\n');
+}
+
+// Idempotently install the assert hooks in config.toml: strip any prior assert
+// artifacts, then append one fresh managed block. Everything else is untouched.
+export function upsertCodexConfigHooks(
+  existing: string | null,
+  assertBin: string,
+  configPath: string,
+): string {
+  const base = stripAssertCodexHooks(existing ?? '', assertBin, configPath);
   const block = buildCodexConfigBlock(base, assertBin, configPath);
   return base.length ? `${base}\n\n${block}\n` : `${block}\n`;
 }
