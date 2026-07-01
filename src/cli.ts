@@ -170,9 +170,7 @@ function installCodexPlugin(home: string): void {
     upsertCodexConfigHooks(config, assertBin, configPath),
   );
 
-  log(
-    '✓ Codex (hooks added to ~/.codex/config.toml — restart Codex to start capture)',
-  );
+  log('✓ Codex');
 
   const cli = findCodexCli(home);
   const pathVersion = detectCodexCliVersion();
