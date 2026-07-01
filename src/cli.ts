@@ -191,7 +191,7 @@ function installCodexPlugin(home: string): void {
  *
  * For a SEA build the binary IS process.execPath. We must NOT use
  * process.argv[1]: when a SEA binary is launched via PATH (e.g. Homebrew's
- * `assert install`), argv[1] is the bare launch name ("assert"), not a path.
+ * `assert init`), argv[1] is the bare launch name ("assert"), not a path.
  * Resolving that against the cwd would yield `<cwd>/assert`, which realpath
  * then rejects with ENOENT unless a file named `assert` happens to exist in the
  * cwd — the "path did not exist" failure users hit from a brew install.
@@ -238,7 +238,7 @@ export function findStableBinPath(
   return null;
 }
 
-async function cmdInstall(agent?: string): Promise<void> {
+async function cmdInit(agent?: string): Promise<void> {
   const home = process.env.HOME || process.env.USERPROFILE || '';
   const assertDir = path.join(home, '.assert');
   const binDir = path.join(assertDir, 'bin');
@@ -514,7 +514,7 @@ async function cmdStatus(): Promise<void> {
     const target = fs.realpathSync(hookBin);
     console.log(`Installed hooks: ${hookBin} -> ${target}`);
   } catch {
-    console.log('Installed hooks: not installed (run `assert install`)');
+    console.log('Installed hooks: not initialized (run `assert init`)');
   }
 }
 
@@ -700,7 +700,7 @@ function printHelp(): void {
 assert - Capture AI agent sessions and track code attribution
 
 Usage:
-  assert install [agent]         Install hooks globally (all agents if none specified)
+  assert init [agent]            Initialize hooks globally (all agents if none specified)
   assert sessions                List sessions in current repo
   assert sessions --all          List all sessions (central storage)
   assert show <session-id>       Show session details
@@ -717,8 +717,8 @@ Supported agents:
   codex           OpenAI Codex CLI
 
 Examples:
-  assert install                 # Install hooks for all agents
-  assert install claude-code     # Install hooks for Claude Code only
+  assert init                    # Initialize hooks for all agents
+  assert init claude-code        # Initialize hooks for Claude Code only
   assert sessions                # List sessions in current project
   assert blame src/index.ts      # Show which agent wrote each line
   assert show abc123-xyz         # View a specific session
@@ -733,8 +733,8 @@ async function main(): Promise<void> {
   const command = args[0];
 
   switch (command) {
-    case 'install':
-      await cmdInstall(args[1]);
+    case 'init':
+      await cmdInit(args[1]);
       break;
     case 'hook':
       if (!args[1] || !args[2]) {

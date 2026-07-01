@@ -139,9 +139,9 @@ describe('CLI integration', () => {
     });
   });
 
-  describe('runningBinPath (install binary resolution)', () => {
+  describe('runningBinPath (init binary resolution)', () => {
     // Regression: a SEA binary launched via PATH (e.g. Homebrew `assert
-    // install`) gets process.argv[1] === "assert" (the bare launch name). The
+    // init`) gets process.argv[1] === "assert" (the bare launch name). The
     // installer must use process.execPath, NOT resolve "assert" against the cwd
     // and realpath it — that throws ENOENT ("path did not exist") unless a file
     // named `assert` happens to exist in the cwd.
@@ -207,7 +207,7 @@ describe('CLI integration', () => {
       ).toBe('/opt/homebrew/bin/assert');
     });
 
-    // install removes ~/.assert/bin/assert before searching, so a back-link into
+    // init removes ~/.assert/bin/assert before searching, so a back-link into
     // it (~/.local/bin/assert -> there) dangles (realpath null) and is skipped —
     // otherwise linking to it would form a cycle.
     it('skips a dangling back-link, choosing the real shim', () => {

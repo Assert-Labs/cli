@@ -42,7 +42,7 @@ If you would like to report a possible security vulnerability or need to reach u
 
 ### Using Assert
 
-We use Assert to build Assert and ask that you do the same while contributing. Download the latest version of Assert and run `assert install` to set up coding agent plugins. When you submit your pull request, please leave changes to `.sessions/` intact so that we may use context from your sessions during review. Hopefully, using the CLI while working will give you a feel for its strengths and weaknesses.
+We use Assert to build Assert and ask that you do the same while contributing. Download the latest version of Assert and run `assert init` to set up coding agent plugins. When you submit your pull request, please leave changes to `.sessions/` intact so that we may use context from your sessions during review. Hopefully, using the CLI while working will give you a feel for its strengths and weaknesses.
 
 If at the time of contributing you use a coding agent that is not yet supported by Assert, please state that somewhere in the PR description.
 

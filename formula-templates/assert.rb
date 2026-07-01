@@ -35,8 +35,8 @@ class Assert < Formula
 
   def caveats
     <<~EOS
-      To install Assert hooks for your coding agents, run:
-        assert install
+      To initialize Assert hooks for your coding agents, run:
+        assert init
     EOS
   end
 

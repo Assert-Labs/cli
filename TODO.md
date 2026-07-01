@@ -13,8 +13,8 @@
 
 ## Nice to Have
 
-- [ ] `assert install --hooks=none` flag to opt out of auto hook installation
-- [ ] `assert install --hooks=global` flag to use `core.hooksPath`
+- [ ] `assert init --hooks=none` flag to opt out of auto hook initialization
+- [ ] `assert init --hooks=global` flag to use `core.hooksPath`
 - [ ] `assert cleanup` for Codex sessions, which have no session-end hook to mark
       them ended (they show as `[ACTIVE]` until a stale-session sweep)
 - [ ] Cloud sync for reviewers to see attribution data

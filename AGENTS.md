@@ -52,6 +52,6 @@ pnpm dev -- <args>    # run the CLI from source via tsx
 ## Before requesting review
 
 Run `pnpm typecheck`, `pnpm test`, and `pnpm build`, and make sure CI is green.
-This is your product — `assert install` so your session data lands in
+This is your product — `assert init` so your session data lands in
 `.sessions/`. When you do commit (only once asked — see **Committing**), generally keep
 the session data in the PR unless specifically asked otherwise.

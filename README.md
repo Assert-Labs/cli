@@ -29,7 +29,7 @@ Capture AI agent sessions from any agentic coding tool as part of your repositor
 
 ## How It Works
 
-1. **Global hooks** are installed to each agent's config directory.
+1. **Global hooks** are initialized in each agent's config directory.
 2. When an agent session starts, a new JSONL file is created in `.sessions/`.
 3. All events (prompts, tool calls, responses) are appended to the session file.
 
@@ -69,8 +69,8 @@ npm install -g .
 ### Initializing Hooks
 
 ```bash
-# Install hooks for all supported agents
-assert install
+# Initialize hooks for all supported agents
+assert init
 ```
 
 ### Requirements
@@ -87,14 +87,14 @@ assert install
 | Codex       | `~/.codex/config.toml` + `~/.codex/skills/assert/` |
 | Cursor      | `~/.cursor/plugins/local/assert/`                  |
 
-- Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert install` warns when it finds only that version.
+- Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert init` warns when it finds only that version.
 - Support for Devin, OpenCode, Pi, and more is upcoming.
 - If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
 
 ## Commands
 
 ```bash
-assert install [agent]      # Install hooks globally (all agents if none specified)
+assert init [agent]         # Initialize hooks globally (all agents if none specified)
 assert sessions             # List sessions in current directory
 assert show <session-id>    # Show session details
 assert trace [ref]          # Export agent-trace attribution for a revision (default HEAD)
