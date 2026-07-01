@@ -5,8 +5,10 @@ import {
   createFileSnapshot,
   diffSnapshots,
   buildAttribution,
+  threadAttribution,
   calculateAgentContribution,
   findSessionLines,
+  type FileSnapshot,
 } from '../src/line-attribution';
 
 describe('line-attribution', () => {
@@ -134,16 +136,69 @@ describe('line-attribution', () => {
       expect(added).toHaveLength(1);
     });
 
-    it('handles line moves correctly', () => {
-      const before = createFileSnapshot('test.ts', 'A\nB\nC');
-      const after = createFileSnapshot('test.ts', 'B\nA\nC');
+    it('treats a reorder as add + remove (matching git, not an order-free match)', () => {
+      // git diff of A\nB\nC -> B\nA\nC reports one addition and one removal (a
+      // line moved), not "all three unchanged". Attribution follows git here.
+      const before = createFileSnapshot('test.ts', 'A\nB\nC\n');
+      const after = createFileSnapshot('test.ts', 'B\nA\nC\n');
 
       const diffs = diffSnapshots(before, after);
-      const unchanged = diffs.filter((d) => d.type === 'unchanged');
+      const added = diffs.filter((d) => d.type === 'added');
+      const removed = diffs.filter((d) => d.type === 'removed');
 
-      // All lines still exist, just moved - should still match
-      expect(unchanged.length).toBe(3);
+      expect(added).toHaveLength(1);
+      expect(removed).toHaveLength(1);
     });
+  });
+
+  // Parity with native git. Expected added/removed COUNTS were produced by
+  // `git diff --no-index --unified=0` over each before/after pair (counts are
+  // invariant — they follow from the unique LCS length — so they must always
+  // match git). Content multisets are asserted only for cases where the diff is
+  // positionally unambiguous; a pure reorder (move_AB) has more than one
+  // minimal diff, so only its counts are pinned. To regenerate, run that git
+  // command over the pairs below. Contents are newline-terminated so git and our
+  // split('\n') model agree on line count (the trailing '' is always unchanged).
+  describe('diffSnapshots (git parity corpus)', () => {
+    interface Case {
+      name: string;
+      before: string;
+      after: string;
+      added: number;
+      removed: number;
+      addedContent?: string[];
+      removedContent?: string[];
+    }
+    const corpus: Case[] = [
+      { name: 'append_end', before: 'a\nb\n', after: 'a\nb\nc\n', added: 1, removed: 0, addedContent: ['c'] },
+      { name: 'remove_middle', before: 'a\nb\nc\n', after: 'a\nc\n', added: 0, removed: 1, removedContent: ['b'] },
+      { name: 'blank_among_blanks', before: 'x\n\n\ny\n', after: 'x\n\n\n\ny\n', added: 1, removed: 0, addedContent: [''] },
+      { name: 'dup_lines', before: 'foo\nfoo\n', after: 'foo\nfoo\nfoo\n', added: 1, removed: 0, addedContent: ['foo'] },
+      { name: 'move_AB', before: 'A\nB\nC\n', after: 'B\nA\nC\n', added: 1, removed: 1 },
+      { name: 'full_rewrite', before: 'old1\nold2\n', after: 'new1\nnew2\n', added: 2, removed: 2, addedContent: ['new1', 'new2'], removedContent: ['old1', 'old2'] },
+      { name: 'markdown_para', before: '# Title\n\nintro\n\nbody\n', after: '# Title\n\nintro\n\nmore\n\nbody\n', added: 2, removed: 0, addedContent: ['', 'more'] },
+      { name: 'insert_blank_code', before: 'line1\nline2\n', after: 'line1\n\nline2\n', added: 1, removed: 0, addedContent: [''] },
+      { name: 'empty_to_content', before: '', after: 'new\n', added: 1, removed: 0, addedContent: ['new'] },
+      { name: 'content_to_empty', before: 'old\n', after: '', added: 0, removed: 1, removedContent: ['old'] },
+      { name: 'identical', before: 'same\nlines\n', after: 'same\nlines\n', added: 0, removed: 0 },
+      { name: 'leading_insert', before: 'b\nc\n', after: 'a\nb\nc\n', added: 1, removed: 0, addedContent: ['a'] },
+    ];
+
+    for (const c of corpus) {
+      it(`matches git for: ${c.name}`, () => {
+        const diffs = diffSnapshots(
+          createFileSnapshot('f', c.before),
+          createFileSnapshot('f', c.after),
+        );
+        const added = diffs.filter((d) => d.type === 'added').map((d) => d.content).sort();
+        const removed = diffs.filter((d) => d.type === 'removed').map((d) => d.content).sort();
+
+        expect(added).toHaveLength(c.added);
+        expect(removed).toHaveLength(c.removed);
+        if (c.addedContent) expect(added).toEqual([...c.addedContent].sort());
+        if (c.removedContent) expect(removed).toEqual([...c.removedContent].sort());
+      });
+    }
   });
 
   describe('buildAttribution', () => {
@@ -204,6 +259,92 @@ describe('line-attribution', () => {
 
       expect(attribution[0].source).toBe('unknown');
     });
+
+    it('never attributes blank lines to a session (markdown blame regression)', () => {
+      // A markdown doc with human-authored blank lines. The agent session adds a
+      // heading; because any multi-line edit / new-file diff includes the empty
+      // hash in its added set, the bug attributed *every* blank line to the
+      // session. Simulate that by putting the empty hash in addedHashes.
+      const content = '# Title\n\nintro paragraph\n\nclosing paragraph\n';
+      const snapshot = createFileSnapshot('doc.md', content);
+      const blankLineIndexes = snapshot.lines
+        .map((l, i) => (l.content.trim() === '' ? i : -1))
+        .filter((i) => i >= 0);
+      expect(blankLineIndexes.length).toBeGreaterThan(0); // sanity: doc has blanks
+
+      const history = [
+        {
+          source: 'agent' as const,
+          sessionId: 'session-1',
+          timestamp: '2024-01-01T00:00:00Z',
+          addedHashes: new Set([hashLine('# Title'), hashLine('')]),
+        },
+      ];
+
+      const attribution = buildAttribution(snapshot, history);
+
+      // The real line the session added is still attributed to it.
+      expect(attribution[0].source).toBe('agent');
+      expect(attribution[0].sessionId).toBe('session-1');
+
+      // Every blank line stays unknown — none claimed by the session.
+      for (const i of blankLineIndexes) {
+        expect(attribution[i].source).toBe('unknown');
+        expect(attribution[i].sessionId).toBeUndefined();
+      }
+      expect(findSessionLines(attribution, 'session-1')).toEqual([1]);
+    });
+  });
+
+  describe('threadAttribution', () => {
+    it('does not claim pre-existing blank lines when a session edits the file', () => {
+      // The markdown blame bug: hash-set matching claimed every blank line.
+      // Threading aligns positionally, so pre-existing blanks stay unknown.
+      const before = createFileSnapshot('doc.md', 'alpha\n\nbeta\n\ngamma\n');
+      const after = createFileSnapshot('doc.md', 'alpha\n\nbeta\n\ngamma\n\ndelta\n');
+
+      const attr = threadAttribution(before, [
+        { after, source: 'agent', sessionId: 's1', timestamp: 't' },
+      ]);
+
+      // Pre-existing content + its blank lines (2,4,6) remain unknown...
+      for (const ln of [1, 2, 3, 4, 5, 6]) {
+        expect(attr[ln - 1].source).toBe('unknown');
+      }
+      // ...only the appended paragraph is the agent's.
+      expect(after.lines[6].content).toBe('delta');
+      expect(attr[6]).toMatchObject({ source: 'agent', sessionId: 's1' });
+    });
+
+    it('threads agent and human edits across steps', () => {
+      const s0 = createFileSnapshot('f', 'base\n');
+      const e0 = createFileSnapshot('f', 'base\nagent1\n');
+      const human = createFileSnapshot('f', 'base\nagent1\nhuman1\n');
+      const e1 = createFileSnapshot('f', 'base\nagent1\nhuman1\nagent2\n');
+
+      const attr = threadAttribution(s0, [
+        { after: e0, source: 'agent', sessionId: 's1', timestamp: '1' },
+        { after: human, source: 'human', timestamp: '2' },
+        { after: e1, source: 'agent', sessionId: 's2', timestamp: '3' },
+      ]);
+
+      expect(attr[0].source).toBe('unknown'); // base (pre-existing)
+      expect(attr[1]).toMatchObject({ source: 'agent', sessionId: 's1' });
+      expect(attr[2].source).toBe('human');
+      expect(attr[3]).toMatchObject({ source: 'agent', sessionId: 's2' });
+    });
+
+    it('attributes a newly created file entirely to the agent (blanks included)', () => {
+      const nonExistent: FileSnapshot = { filePath: 'f', lines: [], contentHash: '' };
+      const after = createFileSnapshot('f', 'a\n\nb\n');
+
+      const attr = threadAttribution(nonExistent, [
+        { after, source: 'agent', sessionId: 's1', timestamp: 't' },
+      ]);
+
+      expect(attr.every((a) => a.source === 'agent')).toBe(true);
+      expect(calculateAgentContribution(attr).agentPercentage).toBe(100);
+    });
   });
 
   describe('calculateAgentContribution', () => {
@@ -228,6 +369,24 @@ describe('line-attribution', () => {
 
       expect(result.agentLines).toBe(0);
       expect(result.agentPercentage).toBe(0);
+    });
+
+    it('excludes blank lines from the ratio (agent-authored file stays 100%)', () => {
+      // 3 agent content lines + 2 blank lines (which hash to hashLine('')).
+      const blank = hashLine('');
+      const attribution = [
+        { lineNumber: 1, hash: 'a', source: 'agent' as const, timestamp: '' },
+        { lineNumber: 2, hash: blank, source: 'unknown' as const, timestamp: '' },
+        { lineNumber: 3, hash: 'b', source: 'agent' as const, timestamp: '' },
+        { lineNumber: 4, hash: blank, source: 'unknown' as const, timestamp: '' },
+        { lineNumber: 5, hash: 'c', source: 'agent' as const, timestamp: '' },
+      ];
+
+      const result = calculateAgentContribution(attribution);
+
+      expect(result.agentLines).toBe(3);
+      expect(result.unknownLines).toBe(0); // blank lines not counted as unknown
+      expect(result.agentPercentage).toBe(100);
     });
   });
 
@@ -297,31 +456,28 @@ export default Component;`);
       expect(humanAdded[0].content).toContain('Hi there');
     });
 
-    it('survives rebase (content-based matching)', () => {
-      // Original file
-      const original = createFileSnapshot('test.ts', `function foo() {
-  return 1;
-}
+    it('keeps content matched when lines shift down (the real rebase case)', () => {
+      const original = createFileSnapshot(
+        'test.ts',
+        'function foo() {\n  return 1;\n}\n',
+      );
+      // A rebase/human adds an import above; foo shifts down but is unchanged.
+      const shifted = createFileSnapshot(
+        'test.ts',
+        "import x from 'x';\n\nfunction foo() {\n  return 1;\n}\n",
+      );
 
-function bar() {
-  return 2;
-}`);
+      const diffs = diffSnapshots(original, shifted);
+      const unchanged = diffs.filter((d) => d.type === 'unchanged').map((d) => d.content);
+      const added = diffs.filter((d) => d.type === 'added').map((d) => d.content);
 
-      // After rebase (lines might be reordered in theory, but content same)
-      const rebased = createFileSnapshot('test.ts', `function bar() {
-  return 2;
-}
-
-function foo() {
-  return 1;
-}`);
-
-      const diffs = diffSnapshots(original, rebased);
-      const unchanged = diffs.filter((d) => d.type === 'unchanged');
-
-      // All lines still exist, content-based matching should find them
-      // (empty lines might differ)
-      expect(unchanged.length).toBeGreaterThanOrEqual(4);
+      // foo's lines keep their identity across the shift...
+      expect(unchanged).toEqual(
+        expect.arrayContaining(['function foo() {', '  return 1;', '}']),
+      );
+      // ...and only the inserted lines are attributed as added.
+      expect(added).toContain("import x from 'x';");
+      expect(added).not.toContain('function foo() {');
     });
   });
 });

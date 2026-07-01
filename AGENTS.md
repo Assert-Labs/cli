@@ -19,6 +19,14 @@ context, contribution process, and security policy, see
   and comment style before introducing your own. Prefer the existing pattern
   over a new one.
 
+## Committing
+
+- **Do not default to committing unless the user explicitly asks.** Do not default to
+  committing when a task looks done, when tests pass, or to "save progress."
+  Finishing a change typically means the edits are made and verified (typecheck/test) and
+  left in the working tree. Wait for an explicit "commit".
+- Same rule for `git push`, branch creation, and PRs — git actions need an explicit request.
+
 ## Where tests go
 
 Put new tests in the existing file that covers the area before creating a new
@@ -41,5 +49,6 @@ pnpm dev -- <args>    # run the CLI from source via tsx
 ## Before requesting review
 
 Run `pnpm typecheck`, `pnpm test`, and `pnpm build`, and make sure CI is green.
-This is your product — `assert install` and commit normally so your session data
-lands in `.sessions/`; leave it in the PR.
+This is your product — `assert install` so your session data lands in
+`.sessions/`. When you do commit (only once asked — see **Committing**), generally keep
+the session data in the PR unless specifically asked otherwise.

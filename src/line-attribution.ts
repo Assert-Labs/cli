@@ -1,11 +1,8 @@
 /**
  * Line Attribution
  *
- * Provides line-level hashing for tracking which agent/human last modified each line.
- * Similar to git blame, but for agent attribution.
- *
- * Key concept: we hash each line's content so attribution survives rebases.
- * A line's identity is its content, not its position.
+ * Line-level attribution: hash each line's normalized content and align two file
+ * versions with an LCS diff (order-sensitive, like git blame).
  */
 
 import * as crypto from 'crypto';
@@ -55,6 +52,11 @@ export function hashLine(line: string): string {
   return crypto.createHash('sha256').update(normalized, 'utf-8').digest('hex').substring(0, 16);
 }
 
+// The hash every blank / whitespace-only line collapses to. Such lines carry no
+// content identity, so they are neither attributed to a session nor counted in
+// the contribution ratio.
+const BLANK_LINE_HASH = hashLine('');
+
 /**
  * Create a snapshot of a file's lines
  */
@@ -75,94 +77,163 @@ export function createFileSnapshot(filePath: string, content: string): FileSnaps
   };
 }
 
-/**
- * Compare two file snapshots to find what changed
- * Uses content-based matching (like git's patience diff)
- */
+/** LCS line diff between two snapshots: unchanged lines are the LCS; the rest are additions/removals. */
 export function diffSnapshots(before: FileSnapshot, after: FileSnapshot): LineDiff[] {
+  const a = before.lines;
+  const b = after.lines;
   const diffs: LineDiff[] = [];
 
-  // Build hash → line mappings
-  const beforeByHash = new Map<string, LineHash[]>();
-  for (const line of before.lines) {
-    const existing = beforeByHash.get(line.hash) || [];
-    existing.push(line);
-    beforeByHash.set(line.hash, existing);
+  const unchanged = (bl: LineHash, al: LineHash): void => {
+    diffs.push({
+      type: 'unchanged',
+      lineNumber: al.lineNumber,
+      hash: al.hash,
+      content: al.content,
+      oldLineNumber: bl.lineNumber,
+    });
+  };
+  const added = (al: LineHash): void => {
+    diffs.push({ type: 'added', lineNumber: al.lineNumber, hash: al.hash, content: al.content });
+  };
+  const removed = (bl: LineHash): void => {
+    diffs.push({ type: 'removed', lineNumber: bl.lineNumber, hash: bl.hash, content: bl.content });
+  };
+
+  // Trim common prefix/suffix so the LCS table stays small.
+  let lo = 0;
+  while (lo < a.length && lo < b.length && a[lo].hash === b[lo].hash) {
+    unchanged(a[lo], b[lo]);
+    lo++;
+  }
+  let aHi = a.length;
+  let bHi = b.length;
+  const suffix: LineDiff[] = [];
+  while (aHi > lo && bHi > lo && a[aHi - 1].hash === b[bHi - 1].hash) {
+    aHi--;
+    bHi--;
+    suffix.push({
+      type: 'unchanged',
+      lineNumber: b[bHi].lineNumber,
+      hash: b[bHi].hash,
+      content: b[bHi].content,
+      oldLineNumber: a[aHi].lineNumber,
+    });
   }
 
-  const afterByHash = new Map<string, LineHash[]>();
-  for (const line of after.lines) {
-    const existing = afterByHash.get(line.hash) || [];
-    existing.push(line);
-    afterByHash.set(line.hash, existing);
-  }
-
-  // Track which lines from 'before' have been matched
-  const matchedBefore = new Set<number>();
-  const matchedAfter = new Set<number>();
-
-  // First pass: find unchanged lines (exact hash match, same or nearby position)
-  for (const afterLine of after.lines) {
-    const beforeLines = beforeByHash.get(afterLine.hash);
-    if (beforeLines) {
-      // Find the closest match by line number
-      let bestMatch: LineHash | null = null;
-      let bestDist = Infinity;
-
-      for (const beforeLine of beforeLines) {
-        if (!matchedBefore.has(beforeLine.lineNumber)) {
-          const dist = Math.abs(beforeLine.lineNumber - afterLine.lineNumber);
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestMatch = beforeLine;
-          }
-        }
+  // LCS over the differing middle: a[lo..aHi) vs b[lo..bHi).
+  const n = aHi - lo;
+  const m = bHi - lo;
+  if (n > 0 && m > 0) {
+    // dp[i][j] = LCS length of a[lo+i..aHi) and b[lo+j..bHi).
+    const dp: number[][] = Array.from({ length: n + 1 }, () =>
+      new Array<number>(m + 1).fill(0),
+    );
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] =
+          a[lo + i].hash === b[lo + j].hash
+            ? dp[i + 1][j + 1] + 1
+            : Math.max(dp[i + 1][j], dp[i][j + 1]);
       }
-
-      if (bestMatch) {
-        matchedBefore.add(bestMatch.lineNumber);
-        matchedAfter.add(afterLine.lineNumber);
-        diffs.push({
-          type: 'unchanged',
-          lineNumber: afterLine.lineNumber,
-          hash: afterLine.hash,
-          content: afterLine.content,
-          oldLineNumber: bestMatch.lineNumber,
-        });
+    }
+    let i = 0;
+    let j = 0;
+    while (i < n && j < m) {
+      if (a[lo + i].hash === b[lo + j].hash) {
+        unchanged(a[lo + i], b[lo + j]);
+        i++;
+        j++;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        removed(a[lo + i]);
+        i++;
+      } else {
+        added(b[lo + j]);
+        j++;
       }
     }
+    while (i < n) removed(a[lo + i++]);
+    while (j < m) added(b[lo + j++]);
+  } else {
+    // One side of the middle is empty: pure removals or pure additions.
+    for (let i = lo; i < aHi; i++) removed(a[i]);
+    for (let j = lo; j < bHi; j++) added(b[j]);
   }
 
-  // Second pass: remaining 'after' lines are additions
-  for (const afterLine of after.lines) {
-    if (!matchedAfter.has(afterLine.lineNumber)) {
-      diffs.push({
-        type: 'added',
-        lineNumber: afterLine.lineNumber,
-        hash: afterLine.hash,
-        content: afterLine.content,
-      });
-    }
-  }
+  // The common suffix was collected back-to-front.
+  for (let k = suffix.length - 1; k >= 0; k--) diffs.push(suffix[k]);
 
-  // Third pass: remaining 'before' lines are removals
-  for (const beforeLine of before.lines) {
-    if (!matchedBefore.has(beforeLine.lineNumber)) {
-      diffs.push({
-        type: 'removed',
-        lineNumber: beforeLine.lineNumber,
-        hash: beforeLine.hash,
-        content: beforeLine.content,
-      });
-    }
-  }
-
-  // Sort by line number (additions/unchanged by new position, removals at end)
-  return diffs.sort((a, b) => {
-    if (a.type === 'removed' && b.type !== 'removed') return 1;
-    if (a.type !== 'removed' && b.type === 'removed') return -1;
-    return a.lineNumber - b.lineNumber;
+  // Sort by line number (additions/unchanged by new position, removals at end).
+  return diffs.sort((x, y) => {
+    if (x.type === 'removed' && y.type !== 'removed') return 1;
+    if (x.type !== 'removed' && y.type === 'removed') return -1;
+    return x.lineNumber - y.lineNumber;
   });
+}
+
+/** Who authored the inserted lines of an edit. */
+export interface EditSource {
+  source: 'agent' | 'human';
+  sessionId?: string;
+  timestamp: string;
+}
+
+/** An edit ending at `after`, tagged with its author. */
+export interface AttributionStep extends EditSource {
+  after: FileSnapshot;
+}
+
+/**
+ * Carry per-line sources across one edit (`before` -> `after`, `beforeAttr`
+ * aligned 1:1 with `before.lines`): retained lines keep their source, inserted
+ * lines get `edit`. Alignment is the LCS diff, so blanks/dupes anchor correctly.
+ */
+export function carryAttribution(
+  before: FileSnapshot,
+  beforeAttr: AttributionRecord[],
+  after: FileSnapshot,
+  edit: EditSource,
+): AttributionRecord[] {
+  const byOldLine = new Map(beforeAttr.map((a) => [a.lineNumber, a]));
+  const carriedFrom = new Map<number, number>();
+  for (const d of diffSnapshots(before, after)) {
+    if (d.type === 'unchanged' && d.oldLineNumber != null) {
+      carriedFrom.set(d.lineNumber, d.oldLineNumber);
+    }
+  }
+  return after.lines.map((line) => {
+    const prev = byOldLine.get(carriedFrom.get(line.lineNumber) ?? -1);
+    return prev
+      ? { ...prev, lineNumber: line.lineNumber, hash: line.hash }
+      : {
+          lineNumber: line.lineNumber,
+          hash: line.hash,
+          source: edit.source,
+          sessionId: edit.sessionId,
+          timestamp: edit.timestamp,
+        };
+  });
+}
+
+/**
+ * Thread per-line sources across an ordered sequence of edits, starting from
+ * `initial` (all 'unknown'). Returns the attribution of the final snapshot.
+ */
+export function threadAttribution(
+  initial: FileSnapshot,
+  steps: AttributionStep[],
+): AttributionRecord[] {
+  let before = initial;
+  let attr: AttributionRecord[] = initial.lines.map((l) => ({
+    lineNumber: l.lineNumber,
+    hash: l.hash,
+    source: 'unknown',
+    timestamp: '',
+  }));
+  for (const step of steps) {
+    attr = carryAttribution(before, attr, step.after, step);
+    before = step.after;
+  }
+  return attr;
 }
 
 /**
@@ -182,6 +253,21 @@ export function buildAttribution(
   const attribution: AttributionRecord[] = [];
 
   for (const line of currentSnapshot.lines) {
+    // Blank / whitespace-only lines carry no content identity: they all
+    // collapse to BLANK_LINE_HASH. Matching them against a session's
+    // added-hashes would attribute *every* blank line in the file to whichever
+    // session happened to add one blank line (e.g. editing a markdown doc claims
+    // all its empty lines). They're not attributable — leave them unknown.
+    if (line.hash === BLANK_LINE_HASH) {
+      attribution.push({
+        lineNumber: line.lineNumber,
+        hash: line.hash,
+        source: 'unknown',
+        timestamp: new Date().toISOString(),
+      });
+      continue;
+    }
+
     // Find the most recent history entry that introduced this line hash
     let foundSource: AttributionRecord | null = null;
 
@@ -227,6 +313,10 @@ export function calculateAgentContribution(attribution: AttributionRecord[]): {
   let unknownLines = 0;
 
   for (const record of attribution) {
+    // Blank / whitespace-only lines aren't attributable (see buildAttribution),
+    // so they don't dilute the ratio — a file an agent wrote end to end still
+    // reads as ~100% even though it has blank lines.
+    if (record.hash === BLANK_LINE_HASH) continue;
     switch (record.source) {
       case 'agent':
         agentLines++;
@@ -239,7 +329,7 @@ export function calculateAgentContribution(attribution: AttributionRecord[]): {
     }
   }
 
-  const total = attribution.length;
+  const total = agentLines + humanLines + unknownLines;
   const agentPercentage = total > 0 ? (agentLines / total) * 100 : 0;
 
   return { agentLines, humanLines, unknownLines, agentPercentage };
