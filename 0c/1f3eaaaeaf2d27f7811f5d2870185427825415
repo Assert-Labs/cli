@@ -1,0 +1,57 @@
+README.md
+  h_a0e615773b4470 85,88,90
+src/hooks/session-recorder.ts
+  s_be7d3a5e391e1e::t_e49484f0874df8 35-36,40-46
+  s_be7d3a5e391e1e::t_3318199de30a23 512-513
+  s_be7d3a5e391e1e::t_e0187bab64ca41 541-543
+  s_be7d3a5e391e1e::t_eff1be033dec8c 193-217,219-221,223-264,270-274,276,278,280,282-307,309-310,314-318,320-340,345-363
+  s_be7d3a5e391e1e::t_2f9f5f90377ec2 364
+src/schema.ts
+  s_be7d3a5e391e1e::t_b23d56f9381414 125-138
+  s_be7d3a5e391e1e::t_ef2813fd7859cd 153-154
+src/cli.ts
+  s_be7d3a5e391e1e::t_103848801e097b 13
+  s_be7d3a5e391e1e::t_5dd66af63f3ba2 599,601,603-604
+  h_a0e615773b4470 39,170,174,181
+  s_be7d3a5e391e1e::t_8c417a18ab25ba 17-18,22,38,40,156-161,163,165,167-169,171-173,175,179,183-186
+tests/session-sync.test.ts
+  s_be7d3a5e391e1e::t_6f42f3e36780df 144-150,153-155,158,160,163-175
+  s_be7d3a5e391e1e::t_960fb0688cb6e5 151-152,156-157,159,161-162
+  s_be7d3a5e391e1e::t_769499dae68e24 16
+tests/codex.test.ts
+  s_be7d3a5e391e1e::t_defdbd76966f39 103-108,111-116
+  s_be7d3a5e391e1e::t_05f0e4831b7c6f 13
+src/plugins.ts
+  s_fc79aa36896b71::t_195e7bb44e56ba 10,22-23,26-27,124,126-131,134-135,137-144,146,149-159,162-164,167-178,180-181,183-194,196-198,201
+tests/plugins.test.ts
+  s_fc79aa36896b71::t_9a08c868250bce 11-12,14,17,56-58,61-68,71-84,87-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "0c1f3eaaaeaf2d27f7811f5d2870185427825415",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_be7d3a5e391e1e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3b2e487-b2b1-4a4f-af3d-2a2feb2031cd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    },
+    "s_fc79aa36896b71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55d6a6cc-65ad-492b-9c82-ae8efae3c69e",
+        "model": "unknown"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
