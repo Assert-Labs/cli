@@ -6,6 +6,7 @@
  */
 
 import * as crypto from 'crypto';
+import type { SessionSource } from './schema';
 
 export interface LineHash {
   lineNumber: number; // 1-indexed
@@ -32,6 +33,8 @@ export interface AttributionRecord {
   hash: string;
   source: 'agent' | 'human' | 'unknown';
   sessionId?: string;
+  agent?: SessionSource;
+  modelId?: string;
   turnId?: string;
   timestamp: string;
 }
@@ -169,6 +172,8 @@ export function diffSnapshots(before: FileSnapshot, after: FileSnapshot): LineDi
 export interface EditSource {
   source: 'agent' | 'human';
   sessionId?: string;
+  agent?: SessionSource;
+  modelId?: string;
   timestamp: string;
 }
 
@@ -204,6 +209,8 @@ export function carryAttribution(
           hash: line.hash,
           source: edit.source,
           sessionId: edit.sessionId,
+          agent: edit.agent,
+          modelId: edit.modelId,
           timestamp: edit.timestamp,
         };
   });

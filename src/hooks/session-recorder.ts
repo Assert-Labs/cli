@@ -211,6 +211,8 @@ function attributionFromOwnership(lines: LineOwnership[]): AttributionRecord[] {
     hash: l.hash,
     source: l.source,
     sessionId: l.sessionId,
+    agent: l.agent,
+    modelId: l.modelId,
     timestamp: '',
   }));
 }
@@ -270,7 +272,13 @@ function fileAttributions(
 ): SessionEvent[] {
   const events: SessionEvent[] = [];
   const timestamp = new Date().toISOString();
-  const agent = { source: 'agent' as const, sessionId: state.sessionId, timestamp };
+  const agentEdit = {
+    source: 'agent' as const,
+    sessionId: state.sessionId,
+    agent: state.source as SessionStartEvent['source'],
+    modelId,
+    timestamp,
+  };
 
   for (const f of changed) {
     let endContent: string;
@@ -303,7 +311,7 @@ function fileAttributions(
         timestamp: '',
       }));
     }
-    const endAttr = carryAttribution(curSnap, curAttr, endSnap, agent);
+    const endAttr = carryAttribution(curSnap, curAttr, endSnap, agentEdit);
 
     events.push({
       type: 'line_attribution',
@@ -315,6 +323,8 @@ function fileAttributions(
         hash: a.hash,
         source: a.source,
         ...(a.sessionId ? { sessionId: a.sessionId } : {}),
+        ...(a.agent ? { agent: a.agent } : {}),
+        ...(a.modelId ? { modelId: a.modelId } : {}),
       })),
     });
 

@@ -128,6 +128,8 @@ export interface LineOwnership {
   hash: string;
   source: 'agent' | 'human' | 'unknown';
   sessionId?: string;
+  agent?: SessionSource;
+  modelId?: string;
 }
 export interface LineAttributionEvent extends BaseEvent {
   type: 'line_attribution';

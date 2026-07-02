@@ -14,6 +14,7 @@ import {
   syncSession,
   endSession,
   blameFile,
+  writeEvent,
 } from '../../src/hooks/session-recorder';
 import { processHook } from '../../src/hooks/claude-code';
 import { loadState, setCaptureDisabled } from '../../src/hooks/session-recorder';
@@ -144,7 +145,28 @@ describe('git-driven session sync', () => {
     const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
     const attr = blameFile(repo, 'base.ts', content)!;
     expect(attr[0].source).toBe('unknown'); // pre-existing 'const base = 1;'
-    expect(attr[1]).toMatchObject({ source: 'agent', sessionId: 's5' }); // added
+    expect(attr[1]).toMatchObject({ source: 'agent', sessionId: 's5', agent: 'claude-code' });
+  });
+
+  it('records the agent and model id on attributed lines for blame', () => {
+    const state = startSession('s6', 'claude-code', repo);
+    writeEvent('s6', {
+      type: 'assistant_turn_start',
+      timestamp: new Date().toISOString(),
+      sessionId: 's6',
+      turnId: 't1',
+      model: 'anthropic/claude-opus-4-8',
+    });
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const added = 2;\n');
+    endSession(state, 'completed');
+
+    const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
+    const attr = blameFile(repo, 'base.ts', content)!;
+    expect(attr[1]).toMatchObject({
+      source: 'agent',
+      agent: 'claude-code',
+      modelId: 'anthropic/claude-opus-4-8',
+    });
   });
 
   it('threads attribution across sessions and human edits for blame', () => {

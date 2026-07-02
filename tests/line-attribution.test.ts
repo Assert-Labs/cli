@@ -237,6 +237,19 @@ describe('line-attribution', () => {
       expect(attr[3]).toMatchObject({ source: 'agent', sessionId: 's2' });
     });
 
+    it('carries the coding agent and model onto agent-inserted lines', () => {
+      const s0 = createFileSnapshot('f', 'base\n');
+      const e0 = createFileSnapshot('f', 'base\nagent line\n');
+
+      const attr = threadAttribution(s0, [
+        { after: e0, source: 'agent', sessionId: 's1', agent: 'codex', modelId: 'gpt-5.5', timestamp: '1' },
+      ]);
+
+      expect(attr[1]).toMatchObject({ source: 'agent', agent: 'codex', modelId: 'gpt-5.5' });
+      expect(attr[0].agent).toBeUndefined();
+      expect(attr[0].modelId).toBeUndefined();
+    });
+
     it('attributes a newly created file entirely to the agent (blanks included)', () => {
       const nonExistent: FileSnapshot = { filePath: 'f', lines: [], contentHash: '' };
       const after = createFileSnapshot('f', 'a\n\nb\n');

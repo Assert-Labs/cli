@@ -4,7 +4,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { createSession } from '../src/session-manager';
 import { listSessionFiles, readSessionEvents } from '../src/session-writer';
-import { runningBinPath, findStableBinPath } from '../src/cli';
+import { runningBinPath, findStableBinPath, blameLineRecord } from '../src/cli';
+import type { AttributionRecord } from '../src/line-attribution';
 
 describe('CLI integration', () => {
   let testDir: string;
@@ -237,6 +238,35 @@ describe('CLI integration', () => {
           realpaths[p] ?? null,
         ),
       ).toBe(null);
+    });
+  });
+
+  describe('blameLineRecord (structured blame for --json/--ndjson)', () => {
+    const lines = ['const a = 1;', 'const b = 2;', 'const c = 3;'];
+    const attribution: AttributionRecord[] = [
+      { lineNumber: 1, hash: 'h1', source: 'agent', sessionId: 'sess-1234-5678', agent: 'codex', modelId: 'openai/gpt-5.5', timestamp: 't' },
+      { lineNumber: 2, hash: 'h2', source: 'human', timestamp: 't' },
+      { lineNumber: 3, hash: 'h3', source: 'unknown', timestamp: 't' },
+    ];
+
+    it('emits full agent/model/session for agent lines', () => {
+      expect(blameLineRecord(attribution, lines, 0)).toEqual({
+        line: 1,
+        content: 'const a = 1;',
+        source: 'agent',
+        agent: 'codex',
+        modelId: 'openai/gpt-5.5',
+        sessionId: 'sess-1234-5678', // full id, not truncated
+      });
+    });
+
+    it('omits agent fields for human and unknown lines', () => {
+      expect(blameLineRecord(attribution, lines, 1)).toEqual({ line: 2, content: 'const b = 2;', source: 'human' });
+      expect(blameLineRecord(attribution, lines, 2)).toEqual({ line: 3, content: 'const c = 3;', source: 'unknown' });
+    });
+
+    it('falls back to unknown when there is no attribution', () => {
+      expect(blameLineRecord(null, lines, 0)).toEqual({ line: 1, content: 'const a = 1;', source: 'unknown' });
     });
   });
 });

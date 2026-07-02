@@ -33,11 +33,11 @@ import {
 import { randomUUID } from 'crypto';
 import { findGitRoot, getGitState, fileAtRef } from './git-watcher';
 import { buildTrace } from './agent-trace';
-import { type AttributionEvent } from './schema';
+import { type AttributionEvent, type SessionSource } from './schema';
 import { getRepoId } from './repo-identity';
 import { getSessionsDir, loadIndex } from './session-index';
 
-import { calculateAgentContribution } from './line-attribution';
+import { calculateAgentContribution, type AttributionRecord } from './line-attribution';
 
 // === Helpers ===
 
@@ -578,7 +578,43 @@ async function cmdTrace(ref?: string): Promise<void> {
 /**
  * Show line-level attribution for a file (like git blame but for agents)
  */
-async function cmdBlame(filePath: string): Promise<void> {
+/** One line of blame: its content plus who authored it. The UI contract. */
+export interface BlameLineRecord {
+  line: number; // 1-indexed
+  content: string;
+  source: 'agent' | 'human' | 'unknown';
+  agent?: SessionSource;
+  modelId?: string;
+  sessionId?: string;
+}
+
+/** Blame record for line index `i` (0-indexed), or `unknown` when unattributed. */
+export function blameLineRecord(
+  attribution: AttributionRecord[] | null,
+  lines: string[],
+  i: number,
+): BlameLineRecord {
+  const attr = attribution?.[i];
+  const rec: BlameLineRecord = {
+    line: i + 1,
+    content: lines[i],
+    source: attr?.source ?? 'unknown',
+  };
+  if (attr?.source === 'agent') {
+    if (attr.agent) rec.agent = attr.agent;
+    if (attr.modelId) rec.modelId = attr.modelId;
+    if (attr.sessionId) rec.sessionId = attr.sessionId;
+  }
+  return rec;
+}
+
+interface BlameOptions {
+  json?: boolean;
+  ndjson?: boolean;
+  range?: [number, number]; // 1-indexed inclusive window
+}
+
+async function cmdBlame(filePath: string, opts: BlameOptions = {}): Promise<void> {
   const cwd = process.cwd();
   const absolutePath = path.isAbsolute(filePath)
     ? filePath
@@ -598,45 +634,63 @@ async function cmdBlame(filePath: string): Promise<void> {
   const { gitRoot } = repoInfo;
   const relativePath = path.relative(gitRoot, absolutePath);
   const content = fs.readFileSync(absolutePath, 'utf-8');
-
   const attribution = blameFile(gitRoot, relativePath, content);
-  if (!attribution) {
-    log(`No agent sessions found for ${relativePath}`);
-    log('Showing file without attribution...');
-    console.log('');
-    const lines = content.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      console.log(`${String(i + 1).padStart(4)}  (unknown)  ${lines[i]}`);
+  const lines = content.split('\n');
+  const total = lines.length;
+  const from = Math.max(1, opts.range?.[0] ?? 1);
+  const to = Math.min(total, opts.range?.[1] ?? total);
+
+  // NDJSON: a header record, then one record per line, written incrementally so
+  // large files stream with bounded memory (never a giant array in one string).
+  if (opts.ndjson) {
+    process.stdout.write(
+      `${JSON.stringify({ type: 'header', file: relativePath, totalLines: total, range: [from, to] })}\n`,
+    );
+    for (let i = from - 1; i < to; i++) {
+      process.stdout.write(`${JSON.stringify({ type: 'line', ...blameLineRecord(attribution, lines, i) })}\n`);
     }
     return;
   }
 
-  const contribution = calculateAgentContribution(attribution);
+  if (opts.json) {
+    const out: BlameLineRecord[] = [];
+    for (let i = from - 1; i < to; i++) out.push(blameLineRecord(attribution, lines, i));
+    process.stdout.write(
+      `${JSON.stringify({ file: relativePath, totalLines: total, range: [from, to], lines: out })}\n`,
+    );
+    return;
+  }
 
-  // Display header
-  console.log(`File: ${relativePath}`);
-  console.log(
-    `Agent contribution: ${contribution.agentPercentage.toFixed(1)}% (${contribution.agentLines}/${attribution.length} lines)`,
-  );
+  if (attribution) {
+    const contribution = calculateAgentContribution(attribution);
+    console.log(`File: ${relativePath}`);
+    console.log(
+      `Agent contribution: ${contribution.agentPercentage.toFixed(1)}% (${contribution.agentLines}/${attribution.length} lines)`,
+    );
+  } else {
+    log(`No agent sessions found for ${relativePath}; showing without attribution.`);
+  }
   console.log('');
 
-  // Display blame output
-  const lines = content.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const attr = attribution[i];
-    const lineNum = String(i + 1).padStart(4);
-
-    let source: string;
-    if (attr.source === 'agent' && attr.sessionId) {
-      source = attr.sessionId.substring(0, 12).padEnd(12);
-    } else if (attr.source === 'human') {
-      source = 'human       ';
-    } else {
-      source = '(unknown)   ';
+  const labelFor = (attr?: AttributionRecord): string => {
+    if (attr?.source === 'agent') {
+      const parts: string[] = [];
+      if (attr.agent) parts.push(attr.agent);
+      if (attr.modelId) parts.push(attr.modelId);
+      if (attr.sessionId) parts.push(attr.sessionId.slice(0, 8));
+      return parts.length ? parts.join(' · ') : 'agent';
     }
-
-    console.log(`${lineNum}  ${source}  ${lines[i]}`);
-  }
+    return attr?.source === 'human' ? 'human' : '(unknown)';
+  };
+  const idx = Array.from({ length: Math.max(0, to - from + 1) }, (_, k) => from - 1 + k);
+  const labels = idx.map((i) => labelFor(attribution?.[i]));
+  const width = Math.min(64, Math.max(1, ...labels.map((l) => l.length)));
+  idx.forEach((i, k) => {
+    const raw = labels[k];
+    const label =
+      raw.length > width ? `${raw.slice(0, width - 1)}…` : raw.padEnd(width);
+    console.log(`${String(i + 1).padStart(4)}  ${label}  ${lines[i]}`);
+  });
 }
 
 /**
@@ -705,6 +759,7 @@ Usage:
   assert sessions --all          List all sessions (central storage)
   assert show <session-id>       Show session details
   assert blame <file>            Show line-by-line agent attribution (like git blame)
+                                 [--json | --ndjson] [--range <start>:<end>]
   assert trace [ref]             Print an agent-trace record for a revision (default HEAD)
   assert status                  Show current status
   assert disable                 Pause capture (hooks stay installed)
@@ -758,13 +813,37 @@ async function main(): Promise<void> {
       }
       await cmdShow(args[1]);
       break;
-    case 'blame':
-      if (!args[1]) {
-        error('Usage: assert blame <file>');
+    case 'blame': {
+      const rest = args.slice(1);
+      let file: string | undefined;
+      let range: [number, number] | undefined;
+      const flags = new Set<string>();
+      for (let i = 0; i < rest.length; i++) {
+        const a = rest[i];
+        if (a === '--range') {
+          const [s, e] = (rest[++i] ?? '').split(':').map((n) => parseInt(n, 10));
+          if (!Number.isFinite(s) || !Number.isFinite(e)) {
+            error('Usage: assert blame <file> --range <start>:<end> (1-indexed)');
+            process.exit(1);
+          }
+          range = [s, e];
+        } else if (a.startsWith('-')) {
+          flags.add(a);
+        } else if (file === undefined) {
+          file = a;
+        }
+      }
+      if (!file) {
+        error('Usage: assert blame <file> [--json | --ndjson] [--range <start>:<end>]');
         process.exit(1);
       }
-      await cmdBlame(args[1]);
+      await cmdBlame(file, {
+        json: flags.has('--json'),
+        ndjson: flags.has('--ndjson') || flags.has('--json-lines'),
+        range,
+      });
       break;
+    }
     case 'pre-commit':
       // No-op: retained so pre-commit hooks installed by older versions stay
       // silent. Session data is now synced at turn boundaries, not on commit.
