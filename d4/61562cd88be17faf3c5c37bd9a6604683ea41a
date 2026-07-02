@@ -1,0 +1,32 @@
+src/cli.ts
+  s_1ec925bf79d491::t_0e361825b4248f 40-41
+  s_1ec925bf79d491::t_ab644907c2d958 697-868
+  s_1ec925bf79d491::t_670b1f327d22d4 936-937
+  s_1ec925bf79d491::t_86c7267d08db9f 36
+  s_1ec925bf79d491::t_3489a439615e77 995,999-1005,1018-1023,1025,1028
+tests/hooks/codex.test.ts
+  s_1ec925bf79d491::t_19dd3e3b53b108 90
+src/hooks/session-recorder.ts
+  s_1ec925bf79d491::t_64e701144140dc 347
+tests/cli.test.ts
+  s_1ec925bf79d491::t_917be7802c642b 279-325
+  s_1ec925bf79d491::t_f4a182a955d9bc 7-15
+src/schema.ts
+  s_1ec925bf79d491::t_5ed5c79370d0b4 121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "d461562cd88be17faf3c5c37bd9a6604683ea41a",
+  "prompts": {},
+  "sessions": {
+    "s_1ec925bf79d491": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0546166-8791-453e-8c3a-fa737262c077",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
