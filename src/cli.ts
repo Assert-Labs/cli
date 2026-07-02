@@ -10,7 +10,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { processHook, type AgentType } from './hooks/index';
-import { captureDisabled, setCaptureDisabled, blameFile } from './hooks/session-recorder';
+import {
+  captureDisabled,
+  setCaptureDisabled,
+  capturePrivate,
+  setCapturePrivate,
+  blameFile,
+} from './hooks/session-recorder';
 import {
   claudePluginDir,
   cursorPluginDir,
@@ -505,6 +511,11 @@ async function cmdStatus(): Promise<void> {
   console.log(
     `Capture: ${captureDisabled() ? 'disabled (run `assert enable`)' : 'enabled'}`,
   );
+  if (!captureDisabled()) {
+    console.log(
+      `Publish: ${capturePrivate() ? 'private (kept out of this repo; run `assert public`)' : 'public'}`,
+    );
+  }
   console.log(`Assert version: ${VERSION}`);
   // The hooks invoke ~/.assert/bin/assert, a symlink to the installed binary.
   // If it resolves, hooks run whatever the symlink points at (kept current by
@@ -527,6 +538,34 @@ function cmdDisable(): void {
 function cmdEnable(): void {
   setCaptureDisabled(false);
   log('Capture enabled.');
+}
+
+/**
+ * Private mode: keep capturing to the central store, but stop publishing into
+ * this repo's `.sessions/` and drop any uncommitted session changes from the
+ * working tree (the data stays in ~/.assert).
+ */
+function cmdPrivate(): void {
+  setCapturePrivate(true);
+  const gitRoot = findGitRoot(process.cwd());
+  let cleaned = false;
+  if (gitRoot && fs.existsSync(path.join(gitRoot, '.sessions'))) {
+    try {
+      execSync('git checkout -- .sessions', { cwd: gitRoot, stdio: 'pipe' });
+      execSync('git clean -f -- .sessions', { cwd: gitRoot, stdio: 'pipe' });
+      cleaned = true;
+    } catch {
+      /* best effort — nothing to clean, or not a git repo */
+    }
+  }
+  log('Private mode: sessions are still captured to ~/.assert but no longer written to this repo.');
+  if (cleaned) log('Dropped uncommitted .sessions/ changes from the working tree.');
+}
+
+/** Public mode (default): resume publishing sessions into the repo's `.sessions/`. */
+function cmdPublic(): void {
+  setCapturePrivate(false);
+  log('Public mode: sessions will be written into this repo again from now on.');
 }
 
 /** Collect attribution events from the committed .sessions/ JSONL files. */
@@ -937,8 +976,10 @@ Usage:
                                  [file] [--json | --ndjson]
   assert trace [ref]             Print an agent-trace record for a revision (default HEAD)
   assert status                  Show current status
-  assert disable                 Pause capture (hooks stay installed)
-  assert enable                  Resume capture
+  assert private                 Keep capturing locally, but stop writing sessions into this repo
+  assert public                  Resume writing sessions into this repo (default)
+  assert disable                 Stop capturing entirely (hooks stay installed)
+  assert enable                  Resume capturing
   assert help                    Show this help
 
 Supported agents:
@@ -1037,6 +1078,12 @@ async function main(): Promise<void> {
       break;
     case 'trace':
       await cmdTrace(args[1]);
+      break;
+    case 'private':
+      cmdPrivate();
+      break;
+    case 'public':
+      cmdPublic();
       break;
     case 'disable':
       cmdDisable();

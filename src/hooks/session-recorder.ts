@@ -76,6 +76,33 @@ export function setCaptureDisabled(disabled: boolean): void {
   }
 }
 
+function privateFlagPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  return path.join(home, '.assert', 'private');
+}
+
+/**
+ * Private mode: still capture to the central store, but don't publish sessions
+ * into the repo's `.sessions/`. Set via `ASSERT_PRIVATE` or `assert private`.
+ */
+export function capturePrivate(): boolean {
+  return !!process.env.ASSERT_PRIVATE || fs.existsSync(privateFlagPath());
+}
+
+export function setCapturePrivate(priv: boolean): void {
+  const flag = privateFlagPath();
+  if (priv) {
+    fs.mkdirSync(path.dirname(flag), { recursive: true });
+    fs.writeFileSync(flag, '');
+  } else {
+    try {
+      fs.unlinkSync(flag);
+    } catch {
+      /* already public */
+    }
+  }
+}
+
 export interface SessionState {
   sessionId: string;
   source: string; // 'claude-code' | 'cursor' | 'codex'
@@ -536,6 +563,9 @@ function syncRepo(
   let index = loadIndex();
   for (const f of changed) index = indexFileModification(index, state.sessionId, repo.repoId, f);
   saveIndex(index);
+
+  // Private mode: captured centrally, but not published into the repo.
+  if (capturePrivate()) return;
 
   let body = '';
   try {

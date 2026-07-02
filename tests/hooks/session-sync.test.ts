@@ -17,7 +17,7 @@ import {
   writeEvent,
 } from '../../src/hooks/session-recorder';
 import { processHook } from '../../src/hooks/claude-code';
-import { loadState, setCaptureDisabled } from '../../src/hooks/session-recorder';
+import { loadState, setCaptureDisabled, setCapturePrivate } from '../../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { loadIndex, findSessionsForFiles } from '../../src/session-index';
 import { hashLine } from '../../src/line-attribution';
@@ -54,6 +54,7 @@ describe('git-driven session sync', () => {
   afterEach(() => {
     process.env.HOME = originalHome;
     delete process.env.ASSERT_DISABLE;
+    delete process.env.ASSERT_PRIVATE;
     fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     fs.rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
@@ -118,6 +119,19 @@ describe('git-driven session sync', () => {
     setCaptureDisabled(false);
     await processHook('SessionStart', JSON.stringify({ session_id: 's6', cwd: repo }));
     expect(loadState('s6', 'claude-code')).not.toBeNull();
+  });
+
+  it('private mode captures centrally but does not publish into the repo', () => {
+    setCapturePrivate(true);
+    const state = startSession('p1', 'claude-code', repo);
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const priv = 1;\n');
+    endSession(state, 'completed');
+    setCapturePrivate(false);
+
+    // Nothing written into the repo's .sessions/ ...
+    expect(fs.existsSync(repoSession('p1'))).toBe(false);
+    // ... but the session is still captured in the central store.
+    expect(fs.existsSync(path.join(home, '.assert', 'sessions', 'p1.jsonl'))).toBe(true);
   });
 
   it('writes portable attribution events into the session on end', () => {
