@@ -4,8 +4,15 @@ import * as path from 'path';
 import * as os from 'os';
 import { createSession } from '../src/session-manager';
 import { listSessionFiles, readSessionEvents } from '../src/session-writer';
-import { runningBinPath, findStableBinPath, blameLineRecord } from '../src/cli';
-import type { AttributionRecord } from '../src/line-attribution';
+import {
+  runningBinPath,
+  findStableBinPath,
+  blameLineRecord,
+  parseUnifiedDiffAddedLines,
+  buildAgentHashIndex,
+  parseDiffRange,
+} from '../src/cli';
+import { hashLine, type AttributionRecord } from '../src/line-attribution';
 
 describe('CLI integration', () => {
   let testDir: string;
@@ -267,6 +274,53 @@ describe('CLI integration', () => {
 
     it('falls back to unknown when there is no attribution', () => {
       expect(blameLineRecord(null, lines, 0)).toEqual({ line: 1, content: 'const a = 1;', source: 'unknown' });
+    });
+  });
+
+  describe('diff-mode blame (--diff for PR review)', () => {
+    it('parses added lines with head line numbers, skipping removals', () => {
+      const diff = [
+        'diff --git a/src/a.ts b/src/a.ts',
+        'index 111..222 100644',
+        '--- a/src/a.ts',
+        '+++ b/src/a.ts',
+        '@@ -1,0 +2,2 @@',
+        '+const added1 = 1;',
+        '+const added2 = 2;',
+        '@@ -5 +7 @@',
+        '-const old = 3;',
+        '+const changed = 3;',
+        'diff --git a/src/b.ts b/src/b.ts',
+        'new file mode 100644',
+        '--- /dev/null',
+        '+++ b/src/b.ts',
+        '@@ -0,0 +1 @@',
+        '+export const b = 1;',
+      ].join('\n');
+
+      expect(parseUnifiedDiffAddedLines(diff)).toEqual([
+        { file: 'src/a.ts', line: 2, content: 'const added1 = 1;' },
+        { file: 'src/a.ts', line: 3, content: 'const added2 = 2;' },
+        { file: 'src/a.ts', line: 7, content: 'const changed = 3;' },
+        { file: 'src/b.ts', line: 1, content: 'export const b = 1;' },
+      ]);
+    });
+
+    it('indexes agent line hashes, latest attribution winning collisions', () => {
+      const h = hashLine('const added1 = 1;');
+      const content = [
+        JSON.stringify({ type: 'attribution', timestamp: '2', sessionId: 's1', filePath: 'a', operation: 'modify', contributor: { type: 'ai', agent: 'codex', modelId: 'openai/gpt-5.5' }, lineHashes: [h] }),
+        JSON.stringify({ type: 'attribution', timestamp: '1', sessionId: 's0', filePath: 'a', operation: 'modify', contributor: { type: 'ai', agent: 'claude-code', modelId: 'old' }, lineHashes: [h] }),
+        JSON.stringify({ type: 'human_turn', timestamp: '3', sessionId: 's1', turnId: 't', content: 'hi' }),
+      ].join('\n');
+
+      const idx = buildAgentHashIndex([content]);
+      expect(idx.get(h)).toMatchObject({ agent: 'codex', modelId: 'openai/gpt-5.5', sessionId: 's1' });
+    });
+
+    it('parses the range spec (A..B, or a bare commit)', () => {
+      expect(parseDiffRange('main..feature')).toEqual({ base: 'main', head: 'feature' });
+      expect(parseDiffRange('abc123')).toEqual({ base: 'abc123^', head: 'abc123' });
     });
   });
 });

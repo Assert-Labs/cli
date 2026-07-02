@@ -118,7 +118,7 @@ export interface AttributionEvent extends BaseEvent {
   filePath: string;
   vcsRevision?: string;
   operation: 'create' | 'modify' | 'delete';
-  contributor: { type: 'ai' | 'human' | 'unknown'; modelId?: string };
+  contributor: { type: 'ai' | 'human' | 'unknown'; agent?: SessionSource; modelId?: string };
   lineHashes: string[];
 }
 

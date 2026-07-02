@@ -344,7 +344,7 @@ function fileAttributions(
         filePath: f,
         vcsRevision: repo.startRef,
         operation: baseContent ? 'modify' : 'create',
-        contributor: { type: 'ai', modelId },
+        contributor: { type: 'ai', agent: state.source as SessionStartEvent['source'], modelId },
         lineHashes: aiHashes,
       });
     }

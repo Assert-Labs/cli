@@ -87,7 +87,7 @@ describe('codex hook adapter', () => {
     const attr = events.find((e) => e.type === 'attribution');
     expect(attr).toBeDefined();
     expect(attr.filePath).toBe('feature.ts');
-    expect(attr.contributor).toEqual({ type: 'ai', modelId: 'gpt-5-codex' });
+    expect(attr.contributor).toEqual({ type: 'ai', agent: 'codex', modelId: 'gpt-5-codex' });
     expect(attr.lineHashes).toContain(hashLine('export const x = 1;'));
   });
 

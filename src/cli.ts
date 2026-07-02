@@ -33,11 +33,12 @@ import {
 import { randomUUID } from 'crypto';
 import { findGitRoot, getGitState, fileAtRef } from './git-watcher';
 import { buildTrace } from './agent-trace';
-import { type AttributionEvent, type SessionSource } from './schema';
+import { type AttributionEvent, type SessionEvent, type SessionSource } from './schema';
 import { getRepoId } from './repo-identity';
 import { getSessionsDir, loadIndex } from './session-index';
 
-import { calculateAgentContribution, type AttributionRecord } from './line-attribution';
+import { calculateAgentContribution, hashLine, type AttributionRecord } from './line-attribution';
+import { execSync } from 'child_process';
 
 // === Helpers ===
 
@@ -693,6 +694,178 @@ async function cmdBlame(filePath: string, opts: BlameOptions = {}): Promise<void
   });
 }
 
+/** A line added by a diff, with its head-side line number. */
+export interface DiffAddedLine {
+  file: string;
+  line: number;
+  content: string;
+}
+
+/** Parse `git diff --unified=0` output into added lines with head line numbers. */
+export function parseUnifiedDiffAddedLines(diff: string): DiffAddedLine[] {
+  const out: DiffAddedLine[] = [];
+  let file: string | null = null;
+  let newLine = 0;
+  for (const raw of diff.split('\n')) {
+    if (raw.startsWith('+++ ')) {
+      const p = raw.slice(4).trim();
+      file = p === '/dev/null' ? null : p.replace(/^b\//, '');
+    } else if (raw.startsWith('@@')) {
+      const m = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
+      if (m) newLine = parseInt(m[1], 10);
+    } else if (raw.startsWith('+') && !raw.startsWith('+++')) {
+      if (file) out.push({ file, line: newLine, content: raw.slice(1) });
+      newLine++;
+    } else if (raw.startsWith(' ')) {
+      newLine++; // context (only with unified>0)
+    }
+  }
+  return out;
+}
+
+interface HashOwner {
+  agent?: SessionSource;
+  modelId?: string;
+  sessionId?: string;
+  timestamp: string;
+}
+
+/**
+ * Index agent-authored line hashes -> owner, from the `attribution` events in
+ * the given session file contents. Later events win on hash collisions.
+ */
+export function buildAgentHashIndex(sessionContents: string[]): Map<string, HashOwner> {
+  const map = new Map<string, HashOwner>();
+  for (const content of sessionContents) {
+    for (const line of content.split('\n')) {
+      if (!line.trim()) continue;
+      let ev: SessionEvent;
+      try {
+        ev = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (ev.type !== 'attribution' || ev.contributor.type !== 'ai') continue;
+      const owner: HashOwner = {
+        agent: ev.contributor.agent,
+        modelId: ev.contributor.modelId,
+        sessionId: ev.sessionId,
+        timestamp: ev.timestamp,
+      };
+      for (const h of ev.lineHashes) {
+        const prev = map.get(h);
+        if (!prev || owner.timestamp > prev.timestamp) map.set(h, owner);
+      }
+    }
+  }
+  return map;
+}
+
+/** `A..B` -> {base:A, head:B}; a bare `C` -> that commit's own diff (`C^..C`). */
+export function parseDiffRange(spec: string): { base: string; head: string } {
+  if (spec.includes('..')) {
+    const [base, head] = spec.split('..');
+    return { base: base || 'HEAD', head: head || 'HEAD' };
+  }
+  return { base: `${spec}^`, head: spec };
+}
+
+interface DiffLineRecord {
+  file: string;
+  line: number;
+  content: string;
+  source: 'agent' | 'unknown';
+  agent?: SessionSource;
+  modelId?: string;
+  sessionId?: string;
+}
+
+/**
+ * Attribute the added lines of a diff range to their authoring agent/model — a
+ * PR-review view. Only the changed lines are looked up (by content hash), and
+ * only the sessions committed in the range are read, so cost is O(range) not
+ * O(whole repo). Lines with no agent match are reported as `unknown`.
+ */
+async function cmdBlameDiff(
+  rangeSpec: string,
+  opts: BlameOptions & { file?: string },
+): Promise<void> {
+  const cwd = process.cwd();
+  const repoInfo = getRepoId(cwd);
+  if (!repoInfo) {
+    error('Not in a git repository with assert tracking');
+    process.exit(1);
+  }
+  const { gitRoot } = repoInfo;
+  const { base, head } = parseDiffRange(rangeSpec);
+  const git = (cmd: string): string =>
+    execSync(cmd, { cwd: gitRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+
+  const pathArg = opts.file ? ` -- "${opts.file}"` : '';
+  let diff: string;
+  try {
+    diff = git(`git diff --unified=0 ${base} ${head}${pathArg}`);
+  } catch {
+    error(`git diff failed for ${base}..${head}`);
+    process.exit(1);
+  }
+  const added = parseUnifiedDiffAddedLines(diff);
+
+  // Only the sessions committed in the range matter; read them at head.
+  let sessionPaths: string[] = [];
+  try {
+    const out = git(`git log ${base}..${head} --name-only --pretty=format: -- .sessions/`);
+    sessionPaths = [...new Set(out.split('\n').map((s) => s.trim()).filter((s) => s.endsWith('.jsonl')))];
+  } catch {
+    /* no sessions in range */
+  }
+  const sessionContents = sessionPaths
+    .map((p) => fileAtRef(gitRoot, head, p))
+    .filter((c): c is string => c != null);
+  const index = buildAgentHashIndex(sessionContents);
+
+  const records: DiffLineRecord[] = added.map((a) => {
+    const owner = index.get(hashLine(a.content));
+    const rec: DiffLineRecord = {
+      file: a.file,
+      line: a.line,
+      content: a.content,
+      source: owner ? 'agent' : 'unknown',
+    };
+    if (owner) {
+      if (owner.agent) rec.agent = owner.agent;
+      if (owner.modelId) rec.modelId = owner.modelId;
+      if (owner.sessionId) rec.sessionId = owner.sessionId;
+    }
+    return rec;
+  });
+
+  if (opts.ndjson) {
+    process.stdout.write(`${JSON.stringify({ type: 'header', base, head, addedLines: records.length })}\n`);
+    for (const r of records) process.stdout.write(`${JSON.stringify({ type: 'line', ...r })}\n`);
+    return;
+  }
+  if (opts.json) {
+    process.stdout.write(`${JSON.stringify({ base, head, lines: records })}\n`);
+    return;
+  }
+
+  console.log(`Diff attribution: ${base}..${head}`);
+  console.log('');
+  let curFile = '';
+  for (const r of records) {
+    if (r.file !== curFile) {
+      curFile = r.file;
+      console.log(`── ${curFile}`);
+    }
+    const label =
+      r.source === 'agent'
+        ? [r.agent, r.modelId, r.sessionId?.slice(0, 8)].filter(Boolean).join(' · ')
+        : '(unknown)';
+    console.log(`+${String(r.line).padStart(4)}  ${label.padEnd(48)}  ${r.content}`);
+  }
+}
+
 /**
  * List all sessions (from central storage and current repo)
  */
@@ -760,6 +933,8 @@ Usage:
   assert show <session-id>       Show session details
   assert blame <file>            Show line-by-line agent attribution (like git blame)
                                  [--json | --ndjson] [--range <start>:<end>]
+  assert blame --diff <a>..<b>   Attribute only a diff's added lines (PR review)
+                                 [file] [--json | --ndjson]
   assert trace [ref]             Print an agent-trace record for a revision (default HEAD)
   assert status                  Show current status
   assert disable                 Pause capture (hooks stay installed)
@@ -817,10 +992,17 @@ async function main(): Promise<void> {
       const rest = args.slice(1);
       let file: string | undefined;
       let range: [number, number] | undefined;
+      let diffSpec: string | undefined;
       const flags = new Set<string>();
       for (let i = 0; i < rest.length; i++) {
         const a = rest[i];
-        if (a === '--range') {
+        if (a === '--diff') {
+          diffSpec = rest[++i];
+          if (!diffSpec) {
+            error('Usage: assert blame --diff <base>..<head> [file]');
+            process.exit(1);
+          }
+        } else if (a === '--range') {
           const [s, e] = (rest[++i] ?? '').split(':').map((n) => parseInt(n, 10));
           if (!Number.isFinite(s) || !Number.isFinite(e)) {
             error('Usage: assert blame <file> --range <start>:<end> (1-indexed)');
@@ -833,15 +1015,17 @@ async function main(): Promise<void> {
           file = a;
         }
       }
+      const json = flags.has('--json');
+      const ndjson = flags.has('--ndjson') || flags.has('--json-lines');
+      if (diffSpec) {
+        await cmdBlameDiff(diffSpec, { json, ndjson, file });
+        break;
+      }
       if (!file) {
-        error('Usage: assert blame <file> [--json | --ndjson] [--range <start>:<end>]');
+        error('Usage: assert blame <file> [--json | --ndjson] [--range <start>:<end>] | --diff <base>..<head>');
         process.exit(1);
       }
-      await cmdBlame(file, {
-        json: flags.has('--json'),
-        ndjson: flags.has('--ndjson') || flags.has('--json-lines'),
-        range,
-      });
+      await cmdBlame(file, { json, ndjson, range });
       break;
     }
     case 'pre-commit':
