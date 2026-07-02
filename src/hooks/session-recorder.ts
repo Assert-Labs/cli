@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createSessionWriter, type SessionWriter } from '../session-writer';
 import { findGitRoot, getGitState, getChangedFiles, fileAtRef } from '../git-watcher';
-import { getOrCreateRepoId } from '../repo-identity';
+import { getOrCreateRepoId, getRepoId } from '../repo-identity';
 import {
   loadIndex,
   saveIndex,
@@ -244,40 +244,51 @@ function attributionFromOwnership(lines: LineOwnership[]): AttributionRecord[] {
   }));
 }
 
+/** Directories holding a repo's session files: the published `.sessions/` and
+ * the local mirror (`~/.assert/sessions/<repoId>/`, which also has unpublished/
+ * private sessions). */
+function repoSessionDirs(gitRoot: string): string[] {
+  const dirs = [path.join(gitRoot, '.sessions')];
+  const repoId = getRepoId(gitRoot)?.repoId;
+  if (repoId) dirs.push(path.join(getSessionsDir(), repoId));
+  return dirs;
+}
+
 /**
- * The most recent committed line_attribution for a file, across the repo's
- * `.sessions/`, excluding `excludeSessionId` (this session, for idempotent
- * re-finalize). Null if none.
+ * The most recent line_attribution for a file across the repo's published
+ * `.sessions/` and the local mirror, excluding `excludeSessionId` (this session,
+ * for idempotent re-finalize). Null if none.
  */
 export function latestLineAttribution(
   gitRoot: string,
   filePath: string,
   excludeSessionId?: string,
 ): LineAttributionEvent | null {
-  const dir = path.join(gitRoot, '.sessions');
-  let files: string[];
-  try {
-    files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
-  } catch {
-    return null;
-  }
   let latest: LineAttributionEvent | null = null;
-  for (const file of files) {
-    for (const line of fs.readFileSync(path.join(dir, file), 'utf-8').split('\n')) {
-      if (!line.trim()) continue;
-      let ev: SessionEvent;
-      try {
-        ev = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (
-        ev.type === 'line_attribution' &&
-        ev.filePath === filePath &&
-        ev.sessionId !== excludeSessionId &&
-        (!latest || ev.timestamp > latest.timestamp)
-      ) {
-        latest = ev;
+  for (const dir of repoSessionDirs(gitRoot)) {
+    let files: string[];
+    try {
+      files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      for (const line of fs.readFileSync(path.join(dir, file), 'utf-8').split('\n')) {
+        if (!line.trim()) continue;
+        let ev: SessionEvent;
+        try {
+          ev = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (
+          ev.type === 'line_attribution' &&
+          ev.filePath === filePath &&
+          ev.sessionId !== excludeSessionId &&
+          (!latest || ev.timestamp > latest.timestamp)
+        ) {
+          latest = ev;
+        }
       }
     }
   }
@@ -564,9 +575,6 @@ function syncRepo(
   for (const f of changed) index = indexFileModification(index, state.sessionId, repo.repoId, f);
   saveIndex(index);
 
-  // Private mode: captured centrally, but not published into the repo.
-  if (capturePrivate()) return;
-
   let body = '';
   try {
     body = fs.readFileSync(sessionFile, 'utf-8').replace(/\n+$/, '');
@@ -578,7 +586,7 @@ function syncRepo(
     const baseline = new Map<string, string>();
     for (const f of changed) baseline.set(f, fileAtRef(repo.gitRoot, repo.startRef, f) ?? '');
 
-    // Re-finalize is idempotent: threading reads the latest committed attribution
+    // Re-finalize is idempotent: threading reads the latest attribution
     // excluding this session, so re-running just rewrites this session's events.
     const attrs = fileAttributions(state, repo, changed, baseline, modelId);
     if (attrs.length) {
@@ -587,9 +595,17 @@ function syncRepo(
     }
   }
 
-  const repoDir = path.join(repo.gitRoot, '.sessions');
-  if (!fs.existsSync(repoDir)) fs.mkdirSync(repoDir, { recursive: true });
-  fs.writeFileSync(path.join(repoDir, `${state.sessionId}.jsonl`), body + '\n');
+  // The assembled per-repo file is always kept locally (source of truth, powers
+  // blame even in private mode); publishing into the repo is just a copy.
+  const localDir = path.join(getSessionsDir(), repo.repoId);
+  fs.mkdirSync(localDir, { recursive: true });
+  fs.writeFileSync(path.join(localDir, `${state.sessionId}.jsonl`), body + '\n');
+
+  if (!capturePrivate()) {
+    const repoDir = path.join(repo.gitRoot, '.sessions');
+    if (!fs.existsSync(repoDir)) fs.mkdirSync(repoDir, { recursive: true });
+    fs.writeFileSync(path.join(repoDir, `${state.sessionId}.jsonl`), body + '\n');
+  }
 }
 
 /**

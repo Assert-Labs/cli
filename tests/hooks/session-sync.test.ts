@@ -121,17 +121,21 @@ describe('git-driven session sync', () => {
     expect(loadState('s6', 'claude-code')).not.toBeNull();
   });
 
-  it('private mode captures centrally but does not publish into the repo', () => {
+  it('private mode does not publish into the repo but blame still works locally', () => {
     setCapturePrivate(true);
     const state = startSession('p1', 'claude-code', repo);
     fs.appendFileSync(path.join(repo, 'base.ts'), 'const priv = 1;\n');
     endSession(state, 'completed');
     setCapturePrivate(false);
 
-    // Nothing written into the repo's .sessions/ ...
+    // Nothing published into the repo's .sessions/ ...
     expect(fs.existsSync(repoSession('p1'))).toBe(false);
-    // ... but the session is still captured in the central store.
-    expect(fs.existsSync(path.join(home, '.assert', 'sessions', 'p1.jsonl'))).toBe(true);
+
+    // ... but the assembled per-repo file is mirrored locally, so blame works.
+    const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
+    const attr = blameFile(repo, 'base.ts', content)!;
+    expect(attr[0].source).toBe('unknown'); // pre-existing 'const base = 1;'
+    expect(attr[1]).toMatchObject({ source: 'agent', sessionId: 'p1', agent: 'claude-code' });
   });
 
   it('writes portable attribution events into the session on end', () => {
