@@ -203,18 +203,23 @@ export function writeEvent(sessionId: string, event: SessionEvent): void {
   writer.close();
 }
 
-/** Model id recorded on the session's assistant turns (models.dev form), if any. */
-function sessionModelId(sessionFile: string): string | undefined {
+/** The session's most recent assistant turn (id + model) — what new lines this
+ * sync are attributed to. */
+function latestTurn(sessionFile: string): { turnId?: string; model?: string } {
+  const turn: { turnId?: string; model?: string } = {};
   try {
     for (const line of fs.readFileSync(sessionFile, 'utf-8').split('\n')) {
       if (!line.trim()) continue;
       const o = JSON.parse(line);
-      if (o.type === 'assistant_turn_start' && o.model) return o.model;
+      if (o.type === 'assistant_turn_start') {
+        if (o.turnId) turn.turnId = o.turnId;
+        if (o.model) turn.model = o.model;
+      }
     }
   } catch {
     /* no session file */
   }
-  return undefined;
+  return turn;
 }
 
 const EMPTY_LINE_HASH = hashLine('');
@@ -240,6 +245,7 @@ function attributionFromOwnership(lines: LineOwnership[]): AttributionRecord[] {
     sessionId: l.sessionId,
     agent: l.agent,
     modelId: l.modelId,
+    turnId: l.turnId,
     timestamp: '',
   }));
 }
@@ -254,15 +260,12 @@ function repoSessionDirs(gitRoot: string): string[] {
   return dirs;
 }
 
-/**
- * The most recent line_attribution for a file across the repo's published
- * `.sessions/` and the local mirror, excluding `excludeSessionId` (this session,
- * for idempotent re-finalize). Null if none.
- */
-export function latestLineAttribution(
+/** Newest line_attribution for a file (across published `.sessions/` and the
+ * local mirror) whose event satisfies `accept`. Null if none. */
+function scanLineAttribution(
   gitRoot: string,
   filePath: string,
-  excludeSessionId?: string,
+  accept: (ev: LineAttributionEvent) => boolean,
 ): LineAttributionEvent | null {
   let latest: LineAttributionEvent | null = null;
   for (const dir of repoSessionDirs(gitRoot)) {
@@ -281,32 +284,48 @@ export function latestLineAttribution(
         } catch {
           continue;
         }
-        if (
-          ev.type === 'line_attribution' &&
-          ev.filePath === filePath &&
-          ev.sessionId !== excludeSessionId &&
-          (!latest || ev.timestamp > latest.timestamp)
-        ) {
-          latest = ev;
-        }
+        if (ev.type !== 'line_attribution' || ev.filePath !== filePath) continue;
+        if (accept(ev) && (!latest || ev.timestamp > latest.timestamp)) latest = ev;
       }
     }
   }
   return latest;
 }
 
+/** Most recent line_attribution for a file, excluding `excludeSessionId` (this
+ * session, for idempotent re-finalize). Null if none. */
+export function latestLineAttribution(
+  gitRoot: string,
+  filePath: string,
+  excludeSessionId?: string,
+): LineAttributionEvent | null {
+  return scanLineAttribution(gitRoot, filePath, (ev) => ev.sessionId !== excludeSessionId);
+}
+
+/** This session's own most recent line_attribution for a file — the running
+ * per-turn ownership state we thread forward. */
+function sessionLineAttribution(
+  gitRoot: string,
+  filePath: string,
+  sessionId: string,
+): LineAttributionEvent | null {
+  return scanLineAttribution(gitRoot, filePath, (ev) => ev.sessionId === sessionId);
+}
+
 /**
- * Per changed file, thread per-line ownership prev(committed) -> baseline(start)
- * -> current(end): human edits between sessions carry over, this session's
- * insertions become the agent's. Emits a line_attribution event (for blame) and
- * an attribution event of the agent's own lines (for traces).
+ * Per changed file, thread per-line ownership up to the current file state and
+ * attribute this turn's new lines to `turn`. Threading starts from this
+ * session's own previous attribution when present (so each turn's insertions get
+ * that turn's id), otherwise from the latest other-session attribution carried
+ * over the start baseline (human edits between sessions). Emits a
+ * line_attribution event (for blame) and an attribution event (for traces).
  */
 function fileAttributions(
   state: SessionState,
   repo: TouchedRepo,
   changed: string[],
   baseline: Map<string, string>,
-  modelId: string | undefined,
+  turn: { turnId?: string; model?: string },
 ): SessionEvent[] {
   const events: SessionEvent[] = [];
   const timestamp = new Date().toISOString();
@@ -314,7 +333,8 @@ function fileAttributions(
     source: 'agent' as const,
     sessionId: state.sessionId,
     agent: state.source as SessionStartEvent['source'],
-    modelId,
+    modelId: turn.model,
+    turnId: turn.turnId,
     timestamp,
   };
 
@@ -329,25 +349,30 @@ function fileAttributions(
     const baseContent = baseline.get(f) ?? '';
     const baseSnap = baseContent ? createFileSnapshot(f, baseContent) : emptySnapshot(f);
 
-    const prev = latestLineAttribution(repo.gitRoot, f, state.sessionId);
     let curSnap: FileSnapshot;
     let curAttr: AttributionRecord[];
-    if (prev) {
-      curAttr = carryAttribution(
-        snapshotFromOwnership(f, prev.lines),
-        attributionFromOwnership(prev.lines),
-        baseSnap,
-        { source: 'human', timestamp },
-      );
-      curSnap = baseSnap;
+    const self = sessionLineAttribution(repo.gitRoot, f, state.sessionId);
+    if (self) {
+      // Continue threading this session's own ownership; earlier turns keep
+      // their turnId, only genuinely new lines become `turn`.
+      curSnap = snapshotFromOwnership(f, self.lines);
+      curAttr = attributionFromOwnership(self.lines);
     } else {
+      const prev = latestLineAttribution(repo.gitRoot, f, state.sessionId);
       curSnap = baseSnap;
-      curAttr = baseSnap.lines.map((l) => ({
-        lineNumber: l.lineNumber,
-        hash: l.hash,
-        source: 'unknown' as const,
-        timestamp: '',
-      }));
+      curAttr = prev
+        ? carryAttribution(
+            snapshotFromOwnership(f, prev.lines),
+            attributionFromOwnership(prev.lines),
+            baseSnap,
+            { source: 'human', timestamp },
+          )
+        : baseSnap.lines.map((l) => ({
+            lineNumber: l.lineNumber,
+            hash: l.hash,
+            source: 'unknown' as const,
+            timestamp: '',
+          }));
     }
     const endAttr = carryAttribution(curSnap, curAttr, endSnap, agentEdit);
 
@@ -363,6 +388,7 @@ function fileAttributions(
         ...(a.sessionId ? { sessionId: a.sessionId } : {}),
         ...(a.agent ? { agent: a.agent } : {}),
         ...(a.modelId ? { modelId: a.modelId } : {}),
+        ...(a.turnId ? { turnId: a.turnId } : {}),
       })),
     });
 
@@ -382,7 +408,7 @@ function fileAttributions(
         filePath: f,
         vcsRevision: repo.startRef,
         operation: baseContent ? 'modify' : 'create',
-        contributor: { type: 'ai', agent: state.source as SessionStartEvent['source'], modelId },
+        contributor: { type: 'ai', agent: state.source as SessionStartEvent['source'], modelId: turn.model },
         lineHashes: aiHashes,
       });
     }
@@ -565,7 +591,7 @@ function syncRepo(
   repo: TouchedRepo,
   sessionFile: string,
   final: boolean,
-  modelId: string | undefined,
+  turn: { turnId?: string; model?: string },
 ): void {
   const ignore = loadAssertIgnore(repo.gitRoot);
   const changed = getChangedFiles(repo.gitRoot, repo.startRef).filter((f) => !isIgnored(f, ignore));
@@ -588,7 +614,7 @@ function syncRepo(
 
     // Re-finalize is idempotent: threading reads the latest attribution
     // excluding this session, so re-running just rewrites this session's events.
-    const attrs = fileAttributions(state, repo, changed, baseline, modelId);
+    const attrs = fileAttributions(state, repo, changed, baseline, turn);
     if (attrs.length) {
       const serialized = attrs.map(serializeSessionEvent).join('\n');
       body = body ? `${body}\n${serialized}` : serialized;
@@ -623,8 +649,8 @@ export function syncSession(
   final = false,
 ): void {
   const sessionFile = resolveSessionFile(state, transcriptPath);
-  const modelId = sessionModelId(sessionFile);
-  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, final, modelId);
+  const turn = latestTurn(sessionFile);
+  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, final, turn);
 }
 
 /**
@@ -648,8 +674,8 @@ export function endSession(
   saveIndex(index);
 
   const sessionFile = resolveSessionFile(state, transcriptPath);
-  const modelId = sessionModelId(sessionFile);
-  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, true, modelId);
+  const turn = latestTurn(sessionFile);
+  for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, true, turn);
 
   clearState(state.sessionId, state.source);
 }

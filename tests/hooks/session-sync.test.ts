@@ -121,6 +121,33 @@ describe('git-driven session sync', () => {
     expect(loadState('s6', 'claude-code')).not.toBeNull();
   });
 
+  it('attributes each line to the turn (and model) that wrote it', () => {
+    const state = startSession('mt', 'claude-code', repo);
+
+    // Turn 1 writes one line.
+    writeEvent('mt', {
+      type: 'assistant_turn_start', timestamp: new Date().toISOString(),
+      sessionId: 'mt', turnId: 'turn-1', model: 'model-1',
+    });
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const one = 1;\n');
+    syncSession(state, undefined, true);
+
+    // Turn 2 writes another line; turn 1's line must keep its own turn.
+    writeEvent('mt', {
+      type: 'assistant_turn_start', timestamp: new Date().toISOString(),
+      sessionId: 'mt', turnId: 'turn-2', model: 'model-2',
+    });
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const two = 2;\n');
+    endSession(state, 'completed');
+
+    const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
+    const byText = new Map(
+      blameFile(repo, 'base.ts', content)!.map((a, i) => [content.split('\n')[i], a]),
+    );
+    expect(byText.get('const one = 1;')).toMatchObject({ source: 'agent', turnId: 'turn-1', modelId: 'model-1' });
+    expect(byText.get('const two = 2;')).toMatchObject({ source: 'agent', turnId: 'turn-2', modelId: 'model-2' });
+  });
+
   it('private mode does not publish into the repo but blame still works locally', () => {
     setCapturePrivate(true);
     const state = startSession('p1', 'claude-code', repo);

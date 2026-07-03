@@ -174,6 +174,7 @@ export interface EditSource {
   sessionId?: string;
   agent?: SessionSource;
   modelId?: string;
+  turnId?: string;
   timestamp: string;
 }
 
@@ -211,6 +212,7 @@ export function carryAttribution(
           sessionId: edit.sessionId,
           agent: edit.agent,
           modelId: edit.modelId,
+          turnId: edit.turnId,
           timestamp: edit.timestamp,
         };
   });

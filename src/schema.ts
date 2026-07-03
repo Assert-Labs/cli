@@ -130,6 +130,7 @@ export interface LineOwnership {
   sessionId?: string;
   agent?: SessionSource;
   modelId?: string;
+  turnId?: string; // assistant turn that wrote the line; links to its prompt/reasoning
 }
 export interface LineAttributionEvent extends BaseEvent {
   type: 'line_attribution';
