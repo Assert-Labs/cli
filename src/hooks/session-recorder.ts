@@ -274,6 +274,30 @@ function repoSessionDirs(gitRoot: string): string[] {
   return dirs;
 }
 
+/** Copy local-only (private) session dirs from the mirror into the repo's
+ * `.sessions/`, skipping ones already published. Returns the count published. */
+export function publishLocalSessions(gitRoot: string): number {
+  const repoId = getRepoId(gitRoot)?.repoId;
+  if (!repoId) return 0;
+  const mirrorBase = path.join(getSessionsDir(), repoId);
+  const repoBase = path.join(gitRoot, '.sessions');
+  let dirs: fs.Dirent[] = [];
+  try {
+    dirs = fs.readdirSync(mirrorBase, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let published = 0;
+  for (const d of dirs) {
+    if (!d.isDirectory()) continue; // skip blame-index.json etc.
+    const dest = path.join(repoBase, d.name);
+    if (fs.existsSync(dest)) continue; // already published
+    fs.cpSync(path.join(mirrorBase, d.name), dest, { recursive: true });
+    published++;
+  }
+  return published;
+}
+
 /** The raw session `.jsonl` text for a session in this repo — from the
  * published `.sessions/` or the local mirror. Null if absent. */
 export function readSessionFile(gitRoot: string, sessionId: string): string | null {

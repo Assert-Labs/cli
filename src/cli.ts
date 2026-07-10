@@ -17,6 +17,8 @@ import {
   setCapturePrivate,
   blameFile,
   readSessionFile,
+  rebuildBlameIndex,
+  publishLocalSessions,
 } from './hooks/session-recorder';
 import {
   claudePluginDir,
@@ -572,6 +574,24 @@ function cmdPublic(): void {
   log('Public mode: sessions will be written into this repo again from now on.');
 }
 
+/**
+ * Reconcile local capture with the repo: publish any local-only (private)
+ * sessions into `.sessions/`, then rebuild the derived blame index against the
+ * current tree. Never rewrites the immutable per-turn logs. Mostly automatic
+ * (hooks + lazy index); this is the manual escape hatch after a branch switch,
+ * stash, or a private→public change.
+ */
+function cmdSync(): void {
+  const gitRoot = findGitRoot(process.cwd());
+  if (!gitRoot) {
+    error('Not in a git repository');
+    process.exit(1);
+  }
+  const promoted = publishLocalSessions(gitRoot);
+  rebuildBlameIndex(gitRoot);
+  log(`Synced: published ${promoted} local session(s) into .sessions/, blame index rebuilt.`);
+}
+
 /** Collect attribution events from the committed .sessions/ JSONL files. */
 function gatherFragments(gitRoot: string): AttributionEvent[] {
   const base = path.join(gitRoot, '.sessions');
@@ -1038,6 +1058,7 @@ Usage:
   assert status                  Show current status
   assert private                 Keep capturing locally, but stop writing sessions into this repo
   assert public                  Resume writing sessions into this repo (default)
+  assert sync                    Publish local sessions into the repo + rebuild the blame index
   assert disable                 Stop capturing entirely (hooks stay installed)
   assert enable                  Resume capturing
   assert help                    Show this help
@@ -1164,6 +1185,9 @@ async function main(): Promise<void> {
       break;
     case 'public':
       cmdPublic();
+      break;
+    case 'sync':
+      cmdSync();
       break;
     case 'disable':
       cmdDisable();

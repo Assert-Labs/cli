@@ -101,14 +101,25 @@ export function generateClaudeCodePlugin(
 // Agent-agnostic context so any agent understands the .sessions/ directory
 // Assert maintains. Shipped as an Agent Skill (see skillMd).
 const AGENT_GUIDANCE = `This project uses Assert (https://github.com/Assert-Labs/cli) to capture AI coding-agent
-sessions. While Assert is enabled, your session is recorded to JSONL files under a
-\`.sessions/\` directory at the repository root.
+sessions. While Assert is enabled, your session is recorded under a \`.sessions/\`
+directory at the repository root.
 
-- This capture is intentional. \`.sessions/\` files are part of the project's
-  history — do not delete or ignore them, and don't treat them as stray output.
-- When \`.sessions/\` changes appear, include them in your commit alongside the
-  related code (e.g. \`git add -A\` or \`git add .sessions\`). They appear only
-  while Assert is enabled; capture is paused with \`assert disable\`.`;
+Layout: one directory per session, \`.sessions/<timestamp>-<id>/\`, containing a
+\`meta.json\` and one immutable JSONL file per turn (\`NNNN-<turnId>.jsonl\`).
+
+- These files are **immutable and append-only**: continuing a session only ADDS
+  new turn files — it never modifies existing ones. Do not hand-edit, delete, or
+  ignore them, and don't treat them as stray output; they're intentional history.
+- Include \`.sessions/\` changes in your commit alongside the related code (e.g.
+  \`git add -A\`).
+
+Commands:
+- \`assert disable\` / \`assert enable\` — stop / resume capture entirely.
+- \`assert private\` / \`assert public\` — keep capturing locally but out of the
+  repo / resume writing into the repo (default is public).
+- \`assert sync\` — publish any local-only (private) sessions into \`.sessions/\`
+  and rebuild the local blame index. Run it after switching branches, un-stashing,
+  or going public if \`.sessions/\` looks out of sync with your changes.`;
 
 // An Agent Skill (SKILL.md) — an open standard adopted across coding agents
 // (Claude Code, Cursor, and others) — so one file serves any of them.

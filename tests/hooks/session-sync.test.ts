@@ -15,6 +15,7 @@ import {
   endSession,
   blameFile,
   writeEvent,
+  publishLocalSessions,
 } from '../../src/hooks/session-recorder';
 import { processHook } from '../../src/hooks/claude-code';
 import { loadState, setCaptureDisabled, setCapturePrivate } from '../../src/hooks/session-recorder';
@@ -147,6 +148,20 @@ describe('git-driven session sync', () => {
     );
     expect(byText.get('const one = 1;')).toMatchObject({ source: 'agent', turnId: 'turn-1', modelId: 'model-1' });
     expect(byText.get('const two = 2;')).toMatchObject({ source: 'agent', turnId: 'turn-2', modelId: 'model-2' });
+  });
+
+  it('publishes local-only (private) sessions into the repo (assert sync)', () => {
+    setCapturePrivate(true);
+    const state = startSession('sy', 'claude-code', repo);
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const s = 1;\n');
+    endSession(state, 'completed');
+    setCapturePrivate(false);
+
+    expect(hasSession('sy')).toBe(false); // private: not in the repo
+    expect(publishLocalSessions(repo)).toBe(1);
+    expect(hasSession('sy')).toBe(true); // now published
+    // Idempotent: re-running publishes nothing new.
+    expect(publishLocalSessions(repo)).toBe(0);
   });
 
   it('caches blame in a local index and self-heals on drift', () => {
