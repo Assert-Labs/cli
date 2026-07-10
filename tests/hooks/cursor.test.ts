@@ -10,6 +10,7 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import { processHook } from '../../src/hooks/cursor';
 import { loadState, setCaptureDisabled, blameFile } from '../../src/hooks/session-recorder';
+import { readRepoEvents } from './session-layout';
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { hashLine } from '../../src/line-attribution';
 
@@ -25,12 +26,7 @@ describe('cursor hook adapter', () => {
     fs.writeFileSync(abs, content);
     return abs;
   };
-  const readEvents = (id: string) =>
-    fs
-      .readFileSync(path.join(repo, '.sessions', `${id}.jsonl`), 'utf-8')
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+  const readEvents = (id: string) => readRepoEvents(repo, id);
 
   const hook = (type: string, data: Record<string, unknown>) =>
     processHook(type, JSON.stringify({ sessionId: 's1', workspaceRoot: repo, ...data }));

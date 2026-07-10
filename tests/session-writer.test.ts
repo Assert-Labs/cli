@@ -10,6 +10,8 @@ import {
   isSessionActive,
   findActiveSessions,
   ensureSessionsDir,
+  sessionDirName,
+  listSessionDirs,
 } from '../src/session-writer';
 import type {
   SessionStartEvent,
@@ -305,6 +307,26 @@ describe('session-writer', () => {
       const activeSessions = findActiveSessions(testDir);
       expect(activeSessions).toContain('active-session');
       expect(activeSessions).not.toContain('completed-session');
+    });
+  });
+
+  describe('session dir layout', () => {
+    it('names dirs by sortable timestamp + short session id', () => {
+      expect(sessionDirName('11111111-2222-3333-4444', '2026-07-09T14:30:02.123Z')).toBe(
+        '2026-07-09T14-30-02Z-11111111',
+      );
+    });
+
+    it('lists session dirs by their meta.json sessionId', () => {
+      const base = path.join(testDir, '.sessions', '2026-07-09T14-30-02Z-abcd1234');
+      fs.mkdirSync(base, { recursive: true });
+      fs.writeFileSync(path.join(base, 'meta.json'), JSON.stringify({ sessionId: 'abcd1234-full-id' }));
+      fs.writeFileSync(path.join(base, '0001-t.jsonl'), '{"type":"human_turn"}\n');
+
+      expect(listSessionDirs(path.join(testDir, '.sessions'))).toEqual([
+        { sessionId: 'abcd1234-full-id', dir: base },
+      ]);
+      expect(listSessionFiles(testDir)).toContain('abcd1234-full-id');
     });
   });
 });

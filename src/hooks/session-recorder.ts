@@ -17,7 +17,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createSessionWriter, type SessionWriter } from '../session-writer';
+import {
+  createSessionWriter,
+  sessionDirName,
+  listSessionDirs,
+  sessionEventFiles,
+  type SessionWriter,
+} from '../session-writer';
 import { findGitRoot, getGitState, getChangedFiles, fileAtRef } from '../git-watcher';
 import { getOrCreateRepoId, getRepoId } from '../repo-identity';
 import {
@@ -107,6 +113,7 @@ export interface SessionState {
   sessionId: string;
   source: string; // 'claude-code' | 'cursor' | 'codex'
   cwd: string;
+  createdAt: string; // session creation time; seeds the (stable) session dir name
   currentTurnId: string | null;
   // Latest human_turn id; the assistant turn links to it (line -> prompt).
   currentPromptId: string | null;
@@ -135,6 +142,7 @@ export function loadState(sessionId: string, source: string): SessionState | nul
       sessionId: data.sessionId,
       source: data.source ?? source,
       cwd: data.cwd,
+      createdAt: data.createdAt ?? new Date().toISOString(),
       currentTurnId: data.currentTurnId ?? null,
       currentPromptId: data.currentPromptId ?? null,
       pendingToolCalls: new Map(Object.entries(data.pendingToolCalls ?? {})),
@@ -152,6 +160,7 @@ export function saveState(state: SessionState): void {
     sessionId: state.sessionId,
     source: state.source,
     cwd: state.cwd,
+    createdAt: state.createdAt,
     currentTurnId: state.currentTurnId,
     currentPromptId: state.currentPromptId,
     pendingToolCalls: Object.fromEntries(state.pendingToolCalls),
@@ -267,11 +276,28 @@ function repoSessionDirs(gitRoot: string): string[] {
 /** The raw session `.jsonl` text for a session in this repo — from the
  * published `.sessions/` or the local mirror. Null if absent. */
 export function readSessionFile(gitRoot: string, sessionId: string): string | null {
-  for (const dir of repoSessionDirs(gitRoot)) {
-    const p = path.join(dir, `${sessionId}.jsonl`);
-    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8');
+  for (const base of repoSessionDirs(gitRoot)) {
+    const flat = path.join(base, `${sessionId}.jsonl`); // legacy layout
+    if (fs.existsSync(flat)) return fs.readFileSync(flat, 'utf-8');
+    const match = listSessionDirs(base).find((s) => s.sessionId === sessionId);
+    const files = match ? sessionEventFiles(match.dir) : [];
+    if (files.length) {
+      return `${files.map((f) => fs.readFileSync(f, 'utf-8').replace(/\n+$/, '')).join('\n')}\n`;
+    }
   }
   return null;
+}
+
+/** Every session `.jsonl` under a base dir — legacy flat files + `<dir>/` layout. */
+function allSessionEventFiles(base: string): string[] {
+  const files: string[] = [];
+  try {
+    for (const f of fs.readdirSync(base)) if (f.endsWith('.jsonl')) files.push(path.join(base, f));
+  } catch {
+    return files;
+  }
+  for (const s of listSessionDirs(base)) files.push(...sessionEventFiles(s.dir));
+  return files;
 }
 
 /** Newest line_attribution for a file (across published `.sessions/` and the
@@ -282,15 +308,9 @@ function scanLineAttribution(
   accept: (ev: LineAttributionEvent) => boolean,
 ): LineAttributionEvent | null {
   let latest: LineAttributionEvent | null = null;
-  for (const dir of repoSessionDirs(gitRoot)) {
-    let files: string[];
-    try {
-      files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
-    } catch {
-      continue;
-    }
-    for (const file of files) {
-      for (const line of fs.readFileSync(path.join(dir, file), 'utf-8').split('\n')) {
+  for (const base of repoSessionDirs(gitRoot)) {
+    for (const file of allSessionEventFiles(base)) {
+      for (const line of fs.readFileSync(file, 'utf-8').split('\n')) {
         if (!line.trim()) continue;
         let ev: SessionEvent;
         try {
@@ -562,6 +582,7 @@ export function startSession(
     sessionId,
     source,
     cwd,
+    createdAt: new Date().toISOString(),
     currentTurnId: null,
     currentPromptId: null,
     pendingToolCalls: new Map(),
@@ -636,17 +657,23 @@ function syncRepo(
     }
   }
 
-  // The assembled per-repo file is always kept locally (source of truth, powers
-  // blame even in private mode); publishing into the repo is just a copy.
-  const localDir = path.join(getSessionsDir(), repo.repoId);
-  fs.mkdirSync(localDir, { recursive: true });
-  fs.writeFileSync(path.join(localDir, `${state.sessionId}.jsonl`), body + '\n');
+  // Materialize into a per-session directory (`<time>-<id8>/`) with a meta.json.
+  // Always kept locally (source of truth, powers blame even in private mode);
+  // publishing into the repo is just a copy.
+  const dirName = sessionDirName(state.sessionId, state.createdAt);
+  const writeInto = (base: string) => {
+    const sdir = path.join(base, dirName);
+    fs.mkdirSync(sdir, { recursive: true });
+    const metaPath = path.join(sdir, 'meta.json');
+    if (!fs.existsSync(metaPath)) {
+      const meta = { sessionId: state.sessionId, source: state.source, createdAt: state.createdAt };
+      fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+    }
+    fs.writeFileSync(path.join(sdir, `${state.sessionId}.jsonl`), `${body}\n`);
+  };
 
-  if (!capturePrivate()) {
-    const repoDir = path.join(repo.gitRoot, '.sessions');
-    if (!fs.existsSync(repoDir)) fs.mkdirSync(repoDir, { recursive: true });
-    fs.writeFileSync(path.join(repoDir, `${state.sessionId}.jsonl`), body + '\n');
-  }
+  writeInto(path.join(getSessionsDir(), repo.repoId));
+  if (!capturePrivate()) writeInto(path.join(repo.gitRoot, '.sessions'));
 }
 
 /**

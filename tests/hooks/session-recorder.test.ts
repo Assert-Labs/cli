@@ -8,6 +8,7 @@ import {
   recordFileEdit,
   syncSession,
 } from '../../src/hooks/session-recorder';
+import { repoHasSession, readRepoEvents } from './session-layout';
 
 /**
  * End-to-end capture into a git worktree.
@@ -65,13 +66,10 @@ describe('session-recorder — git worktree capture', () => {
     syncSession(state, undefined, true);
 
     // Captured in the worktree...
-    const captured = path.join(wt, '.sessions', `${sessionId}.jsonl`);
-    expect(fs.existsSync(captured)).toBe(true);
-    expect(fs.readFileSync(captured, 'utf-8').trim().length).toBeGreaterThan(0);
+    expect(repoHasSession(wt, sessionId)).toBe(true);
+    expect(readRepoEvents(wt, sessionId).length).toBeGreaterThan(0);
 
     // ...and not misrouted to the main checkout.
-    expect(
-      fs.existsSync(path.join(mainRepo, '.sessions', `${sessionId}.jsonl`)),
-    ).toBe(false);
+    expect(repoHasSession(mainRepo, sessionId)).toBe(false);
   });
 });

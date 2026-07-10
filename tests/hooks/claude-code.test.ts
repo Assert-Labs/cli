@@ -10,6 +10,7 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import { processHook } from '../../src/hooks/claude-code';
 import { loadState, setCaptureDisabled, blameFile } from '../../src/hooks/session-recorder';
+import { readRepoEvents } from './session-layout';
 import { hashLine } from '../../src/line-attribution';
 
 describe('claude-code hook adapter', () => {
@@ -24,12 +25,7 @@ describe('claude-code hook adapter', () => {
     fs.writeFileSync(abs, content);
     return abs;
   };
-  const readEvents = (id: string) =>
-    fs
-      .readFileSync(path.join(repo, '.sessions', `${id}.jsonl`), 'utf-8')
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+  const readEvents = (id: string) => readRepoEvents(repo, id);
 
   // Claude Code sends absolute file paths.
   const hook = (type: string, data: Record<string, unknown>) =>

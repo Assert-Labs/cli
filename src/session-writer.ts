@@ -95,38 +95,87 @@ export function readSessionEvents(
   cwd: string = process.cwd(),
   options: SessionReadOptions = {}
 ): SessionEvent[] {
-  let filePath: string;
-
+  // Resolve the file(s) holding this session's events. `direct` is the central
+  // flat store; otherwise prefer a legacy flat `<id>.jsonl`, else the dir layout.
+  let files: string[];
   if (options.direct) {
-    filePath = path.join(cwd, `${sessionId}.jsonl`);
+    const flat = path.join(cwd, `${sessionId}.jsonl`);
+    files = fs.existsSync(flat) ? [flat] : [];
   } else {
-    filePath = path.join(cwd, getSessionFilePath(sessionId));
+    const base = path.join(cwd, SESSIONS_DIR);
+    const flat = path.join(base, `${sessionId}.jsonl`);
+    if (fs.existsSync(flat)) {
+      files = [flat];
+    } else {
+      const match = listSessionDirs(base).find((s) => s.sessionId === sessionId);
+      files = match ? sessionEventFiles(match.dir) : [];
+    }
   }
 
-  if (!fs.existsSync(filePath)) {
+  const events: SessionEvent[] = [];
+  for (const filePath of files) {
+    for (const line of fs.readFileSync(filePath, 'utf-8').split('\n')) {
+      if (line.trim()) events.push(parseSessionEvent(line));
+    }
+  }
+  return events;
+}
+
+/** Session dir name: sortable ISO timestamp + short session id (no rename ever). */
+export function sessionDirName(sessionId: string, createdAt: string): string {
+  const stamp = createdAt.replace(/\.\d+Z$/, 'Z').replace(/:/g, '-');
+  return `${stamp}-${sessionId.slice(0, 8)}`;
+}
+
+/** Session directories under a `.sessions`-style base, keyed by their meta.json sessionId. */
+export function listSessionDirs(baseDir: string): { sessionId: string; dir: string }[] {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  } catch {
     return [];
   }
+  const out: { sessionId: string; dir: string }[] = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(baseDir, e.name, 'meta.json'), 'utf-8'));
+      if (meta.sessionId) out.push({ sessionId: meta.sessionId, dir: path.join(baseDir, e.name) });
+    } catch {
+      /* not a session dir */
+    }
+  }
+  return out;
+}
 
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const lines = content.split('\n').filter((line) => line.trim());
-
-  return lines.map(parseSessionEvent);
+/** The `.jsonl` files in a session dir, in turn order. */
+export function sessionEventFiles(sessionDir: string): string[] {
+  try {
+    return fs
+      .readdirSync(sessionDir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .sort()
+      .map((f) => path.join(sessionDir, f));
+  } catch {
+    return [];
+  }
 }
 
 /**
- * List all session files in the .sessions directory
+ * List all session ids in the .sessions directory — both the legacy flat
+ * `<id>.jsonl` files and the new `<dir>/` layout (via meta.json).
  */
 export function listSessionFiles(cwd: string = process.cwd()): string[] {
   const dir = path.join(cwd, SESSIONS_DIR);
-
   if (!fs.existsSync(dir)) {
     return [];
   }
-
-  return fs
+  const flat = fs
     .readdirSync(dir)
     .filter((file) => file.endsWith('.jsonl'))
     .map((file) => file.replace('.jsonl', ''));
+  const dirs = listSessionDirs(dir).map((s) => s.sessionId);
+  return [...new Set([...flat, ...dirs])];
 }
 
 /**

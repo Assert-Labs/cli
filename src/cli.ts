@@ -36,6 +36,8 @@ import {
   readSessionEvents,
   extractSessionMetadata,
   findActiveSessions,
+  listSessionDirs,
+  sessionEventFiles,
 } from './session-writer';
 import { randomUUID } from 'crypto';
 import { findGitRoot, getGitState, fileAtRef } from './git-watcher';
@@ -572,18 +574,18 @@ function cmdPublic(): void {
 
 /** Collect attribution events from the committed .sessions/ JSONL files. */
 function gatherFragments(gitRoot: string): AttributionEvent[] {
-  const dir = path.join(gitRoot, '.sessions');
+  const base = path.join(gitRoot, '.sessions');
   const out: AttributionEvent[] = [];
-  let files: string[];
+  // Legacy flat `<id>.jsonl` plus the `<dir>/` layout (session dirs of `.jsonl`).
+  const files: string[] = [];
   try {
-    files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
+    for (const f of fs.readdirSync(base)) if (f.endsWith('.jsonl')) files.push(path.join(base, f));
   } catch {
     return out;
   }
+  for (const s of listSessionDirs(base)) files.push(...sessionEventFiles(s.dir));
   for (const file of files) {
-    for (const line of fs
-      .readFileSync(path.join(dir, file), 'utf-8')
-      .split('\n')) {
+    for (const line of fs.readFileSync(file, 'utf-8').split('\n')) {
       if (!line.trim()) continue;
       try {
         const o = JSON.parse(line);

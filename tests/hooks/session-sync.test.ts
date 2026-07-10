@@ -21,6 +21,7 @@ import { loadState, setCaptureDisabled, setCapturePrivate } from '../../src/hook
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { loadIndex, findSessionsForFiles } from '../../src/session-index';
 import { hashLine } from '../../src/line-attribution';
+import { repoHasSession, readRepoEvents } from './session-layout';
 
 describe('git-driven session sync', () => {
   let originalHome: string | undefined;
@@ -35,7 +36,7 @@ describe('git-driven session sync', () => {
     fs.writeFileSync(abs, content);
     return abs;
   };
-  const repoSession = (id: string) => path.join(repo, '.sessions', `${id}.jsonl`);
+  const hasSession = (id: string) => repoHasSession(repo, id);
 
   beforeEach(() => {
     originalHome = process.env.HOME;
@@ -63,11 +64,11 @@ describe('git-driven session sync', () => {
     const state = startSession('s1', 'claude-code', repo);
 
     syncSession(state);
-    expect(fs.existsSync(repoSession('s1'))).toBe(false);
+    expect(hasSession('s1')).toBe(false);
 
     write('edited.ts', 'x\n');
     syncSession(state);
-    expect(fs.existsSync(repoSession('s1'))).toBe(true);
+    expect(hasSession('s1')).toBe(true);
   });
 
   it('captures changes not made through edit tools', () => {
@@ -94,11 +95,11 @@ describe('git-driven session sync', () => {
     write('ignored/x.ts', '1\n');
     write('debug.log', 'noise\n');
     syncSession(state);
-    expect(fs.existsSync(repoSession('s3'))).toBe(false);
+    expect(hasSession('s3')).toBe(false);
 
     write('real.ts', '1\n');
     syncSession(state);
-    expect(fs.existsSync(repoSession('s3'))).toBe(true);
+    expect(hasSession('s3')).toBe(true);
 
     const index = loadIndex();
     expect(findSessionsForFiles(index, repoId, ['ignored/x.ts'])).not.toContain('s3');
@@ -156,7 +157,7 @@ describe('git-driven session sync', () => {
     setCapturePrivate(false);
 
     // Nothing published into the repo's .sessions/ ...
-    expect(fs.existsSync(repoSession('p1'))).toBe(false);
+    expect(hasSession('p1')).toBe(false);
 
     // ... but the assembled per-repo file is mirrored locally, so blame works.
     const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
@@ -170,11 +171,7 @@ describe('git-driven session sync', () => {
     write('feature.ts', 'export const x = 1;\n');
     endSession(state, 'completed');
 
-    const events = fs
-      .readFileSync(repoSession('s7'), 'utf-8')
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+    const events = readRepoEvents(repo, 's7');
     const attr = events.find((e) => e.type === 'attribution');
     expect(attr).toBeDefined();
     expect(attr.filePath).toBe('feature.ts');

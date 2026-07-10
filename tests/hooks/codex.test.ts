@@ -14,6 +14,7 @@ import { loadState, setCaptureDisabled, blameFile, readSessionFile } from '../..
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { hashLine } from '../../src/line-attribution';
 import { parseSession, getTurn } from '../../src/core';
+import { readRepoEvents } from './session-layout';
 
 describe('codex hook adapter', () => {
   let originalHome: string | undefined;
@@ -28,13 +29,7 @@ describe('codex hook adapter', () => {
     fs.writeFileSync(abs, content);
     return abs;
   };
-  const repoSession = (id: string) => path.join(repo, '.sessions', `${id}.jsonl`);
-  const readEvents = (id: string) =>
-    fs
-      .readFileSync(repoSession(id), 'utf-8')
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
+  const readEvents = (id: string) => readRepoEvents(repo, id);
 
   const hook = (type: string, data: Record<string, unknown>) =>
     processHook(type, JSON.stringify({ session_id: 's1', cwd: repo, ...data }));
