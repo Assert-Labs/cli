@@ -307,16 +307,17 @@ describe('CLI integration', () => {
       ]);
     });
 
-    it('indexes agent line hashes, latest attribution winning collisions', () => {
+    it('indexes agent line hashes (with turn), latest attribution winning collisions', () => {
       const h = hashLine('const added1 = 1;');
       const content = [
-        JSON.stringify({ type: 'attribution', timestamp: '2', sessionId: 's1', filePath: 'a', operation: 'modify', contributor: { type: 'ai', agent: 'codex', modelId: 'openai/gpt-5.5' }, lineHashes: [h] }),
-        JSON.stringify({ type: 'attribution', timestamp: '1', sessionId: 's0', filePath: 'a', operation: 'modify', contributor: { type: 'ai', agent: 'claude-code', modelId: 'old' }, lineHashes: [h] }),
+        JSON.stringify({ type: 'line_attribution', timestamp: '2', sessionId: 's1', filePath: 'a', lines: [{ hash: h, source: 'agent', agent: 'codex', modelId: 'openai/gpt-5.5', turnId: 'turn-9' }] }),
+        JSON.stringify({ type: 'line_attribution', timestamp: '1', sessionId: 's0', filePath: 'a', lines: [{ hash: h, source: 'agent', agent: 'claude-code', modelId: 'old', turnId: 'turn-0' }] }),
         JSON.stringify({ type: 'human_turn', timestamp: '3', sessionId: 's1', turnId: 't', content: 'hi' }),
       ].join('\n');
 
       const idx = buildAgentHashIndex([content]);
-      expect(idx.get(h)).toMatchObject({ agent: 'codex', modelId: 'openai/gpt-5.5', sessionId: 's1' });
+      // turnId surfaces so a diff line resolves to its prompt; latest wins.
+      expect(idx.get(h)).toMatchObject({ agent: 'codex', modelId: 'openai/gpt-5.5', sessionId: 's1', turnId: 'turn-9' });
     });
 
     it('parses the range spec (A..B, or a bare commit)', () => {

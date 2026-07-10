@@ -264,6 +264,16 @@ function repoSessionDirs(gitRoot: string): string[] {
   return dirs;
 }
 
+/** The raw session `.jsonl` text for a session in this repo — from the
+ * published `.sessions/` or the local mirror. Null if absent. */
+export function readSessionFile(gitRoot: string, sessionId: string): string | null {
+  for (const dir of repoSessionDirs(gitRoot)) {
+    const p = path.join(dir, `${sessionId}.jsonl`);
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8');
+  }
+  return null;
+}
+
 /** Newest line_attribution for a file (across published `.sessions/` and the
  * local mirror) whose event satisfies `accept`. Null if none. */
 function scanLineAttribution(

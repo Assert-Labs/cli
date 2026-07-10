@@ -16,6 +16,7 @@ import {
   capturePrivate,
   setCapturePrivate,
   blameFile,
+  readSessionFile,
 } from './hooks/session-recorder';
 import {
   claudePluginDir,
@@ -44,7 +45,7 @@ import { getRepoId } from './repo-identity';
 import { getSessionsDir, loadIndex } from './session-index';
 
 import { calculateAgentContribution, hashLine, type AttributionRecord } from './line-attribution';
-import { type BlameLine } from './core';
+import { parseSession, getTurn, turnContext, type BlameLine } from './core';
 import { execSync } from 'child_process';
 
 // === Helpers ===
@@ -761,12 +762,14 @@ interface HashOwner {
   agent?: SessionSource;
   modelId?: string;
   sessionId?: string;
+  turnId?: string;
   timestamp: string;
 }
 
 /**
- * Index agent-authored line hashes -> owner, from the `attribution` events in
- * the given session file contents. Later events win on hash collisions.
+ * Index agent-authored line hashes -> owner, from the per-line `line_attribution`
+ * events in the given session file contents (carries the turn, so a diff line
+ * resolves back to its prompt). Later events win on hash collisions.
  */
 export function buildAgentHashIndex(sessionContents: string[]): Map<string, HashOwner> {
   const map = new Map<string, HashOwner>();
@@ -779,16 +782,18 @@ export function buildAgentHashIndex(sessionContents: string[]): Map<string, Hash
       } catch {
         continue;
       }
-      if (ev.type !== 'attribution' || ev.contributor.type !== 'ai') continue;
-      const owner: HashOwner = {
-        agent: ev.contributor.agent,
-        modelId: ev.contributor.modelId,
-        sessionId: ev.sessionId,
-        timestamp: ev.timestamp,
-      };
-      for (const h of ev.lineHashes) {
-        const prev = map.get(h);
-        if (!prev || owner.timestamp > prev.timestamp) map.set(h, owner);
+      if (ev.type !== 'line_attribution') continue;
+      for (const l of ev.lines) {
+        if (l.source !== 'agent') continue;
+        const prev = map.get(l.hash);
+        if (prev && ev.timestamp <= prev.timestamp) continue;
+        map.set(l.hash, {
+          agent: l.agent,
+          modelId: l.modelId,
+          sessionId: ev.sessionId,
+          turnId: l.turnId,
+          timestamp: ev.timestamp,
+        });
       }
     }
   }
@@ -812,6 +817,7 @@ interface DiffLineRecord {
   agent?: SessionSource;
   modelId?: string;
   sessionId?: string;
+  turnId?: string;
 }
 
 /**
@@ -870,6 +876,7 @@ async function cmdBlameDiff(
       if (owner.agent) rec.agent = owner.agent;
       if (owner.modelId) rec.modelId = owner.modelId;
       if (owner.sessionId) rec.sessionId = owner.sessionId;
+      if (owner.turnId) rec.turnId = owner.turnId;
     }
     return rec;
   });
@@ -898,6 +905,60 @@ async function cmdBlameDiff(
         : '(unknown)';
     console.log(`+${String(r.line).padStart(4)}  ${label.padEnd(48)}  ${r.content}`);
   }
+}
+
+/** Resolve + parse a session's normalized model, or exit with an error. */
+function loadParsedSession(sessionId: string) {
+  const repoInfo = getRepoId(process.cwd());
+  if (!repoInfo) {
+    error('Not in a git repository with assert tracking');
+    process.exit(1);
+  }
+  const jsonl = readSessionFile(repoInfo.gitRoot, sessionId);
+  if (!jsonl) {
+    error(`No session found for ${sessionId} in this repo`);
+    process.exit(1);
+  }
+  return parseSession(jsonl);
+}
+
+/** The normalized session model (turns with prompts/reasoning/tools linked). */
+async function cmdSession(sessionId: string, opts: { json?: boolean } = {}): Promise<void> {
+  const session = loadParsedSession(sessionId);
+  if (opts.json) {
+    process.stdout.write(`${JSON.stringify(session)}\n`);
+    return;
+  }
+  console.log(`Session ${session.sessionId} (${session.source}) — ${session.turns.length} turns`);
+  console.log('');
+  for (const t of session.turns) {
+    const prompt = t.prompt?.text.replace(/\s+/g, ' ').slice(0, 60) ?? '(no prompt)';
+    console.log(`${t.turnId}  ${t.changedCode ? '±' : ' '}  ${(t.modelId ?? '').padEnd(24)}  ${prompt}`);
+  }
+}
+
+/** A single turn, fully resolved; `--context` also returns the dig-back chain. */
+async function cmdTurn(
+  sessionId: string,
+  turnId: string,
+  opts: { json?: boolean; context?: boolean } = {},
+): Promise<void> {
+  const session = loadParsedSession(sessionId);
+  const turn = getTurn(session, turnId);
+  if (!turn) {
+    error(`No turn ${turnId} in session ${sessionId}`);
+    process.exit(1);
+  }
+  if (opts.json) {
+    const payload = opts.context ? { turn, context: turnContext(session, turnId) } : turn;
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return;
+  }
+  console.log(`Turn ${turn.turnId}  ${turn.modelId ?? ''}`);
+  if (turn.prompt) console.log(`\nPrompt:\n  ${turn.prompt.text}`);
+  for (const r of turn.reasoning) console.log(`\nReasoning:\n  ${r.text}`);
+  for (const tc of turn.toolCalls) console.log(`\nTool: ${tc.name}`);
+  for (const txt of turn.text) console.log(`\nAssistant:\n  ${txt}`);
 }
 
 /**
@@ -970,6 +1031,8 @@ Usage:
   assert blame --diff <a>..<b>   Attribute only a diff's added lines (PR review)
                                  [file] [--json | --ndjson]
   assert trace [ref]             Print an agent-trace record for a revision (default HEAD)
+  assert session <id>            Show a session's turns (prompts/reasoning/tools) [--json]
+  assert turn <id> <turn-id>     Show one turn, fully resolved [--json] [--context]
   assert status                  Show current status
   assert private                 Keep capturing locally, but stop writing sessions into this repo
   assert public                  Resume writing sessions into this repo (default)
@@ -1074,6 +1137,26 @@ async function main(): Promise<void> {
     case 'trace':
       await cmdTrace(args[1]);
       break;
+    case 'session': {
+      const rest = args.slice(1);
+      const sid = rest.find((a) => !a.startsWith('-'));
+      if (!sid) {
+        error('Usage: assert session <session-id> [--json]');
+        process.exit(1);
+      }
+      await cmdSession(sid, { json: rest.includes('--json') });
+      break;
+    }
+    case 'turn': {
+      const rest = args.slice(1);
+      const pos = rest.filter((a) => !a.startsWith('-'));
+      if (pos.length < 2) {
+        error('Usage: assert turn <session-id> <turn-id> [--json] [--context]');
+        process.exit(1);
+      }
+      await cmdTurn(pos[0], pos[1], { json: rest.includes('--json'), context: rest.includes('--context') });
+      break;
+    }
     case 'private':
       cmdPrivate();
       break;

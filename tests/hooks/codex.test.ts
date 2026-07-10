@@ -10,9 +10,10 @@ import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import { processHook } from '../../src/hooks/codex';
-import { loadState, setCaptureDisabled, blameFile } from '../../src/hooks/session-recorder';
+import { loadState, setCaptureDisabled, blameFile, readSessionFile } from '../../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { hashLine } from '../../src/line-attribution';
+import { parseSession, getTurn } from '../../src/core';
 
 describe('codex hook adapter', () => {
   let originalHome: string | undefined;
@@ -107,6 +108,24 @@ describe('codex hook adapter', () => {
     const turnStart = events.find((e) => e.type === 'assistant_turn_start');
     // Explicit link — no ordering needed to find a line's prompt.
     expect(turnStart.promptTurnId).toBe(human.turnId);
+  });
+
+  it('resolves a captured line back to its prompt via core', async () => {
+    await hook('SessionStart', {});
+    await hook('UserPromptSubmit', { prompt: 'add a feature' });
+    await hook('PreToolUse', {
+      tool_name: 'apply_patch',
+      tool_input: { file_path: 'feature.ts' },
+      model: 'gpt-5-codex',
+    });
+    write('feature.ts', 'export const x = 1;\n');
+    await hook('Stop', { last_assistant_message: 'Done.' });
+
+    // blame gives the line's turnId; core (parseSession) resolves it to the prompt.
+    const content = fs.readFileSync(path.join(repo, 'feature.ts'), 'utf-8');
+    const turnId = blameFile(repo, 'feature.ts', content)![0].turnId!;
+    const session = parseSession(readSessionFile(repo, 's1')!);
+    expect(getTurn(session, turnId)?.prompt?.text).toBe('add a feature');
   });
 
   it('finalizes idempotently across multiple Stops', async () => {
