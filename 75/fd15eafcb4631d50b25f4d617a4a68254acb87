@@ -1,0 +1,21 @@
+package.json
+  s_1ec925bf79d491::t_9554e94b0ac9f9 52,57
+pnpm-lock.yaml
+  s_1ec925bf79d491::t_9f9147b5726681 17-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "75fd15eafcb4631d50b25f4d617a4a68254acb87",
+  "prompts": {},
+  "sessions": {
+    "s_1ec925bf79d491": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0546166-8791-453e-8c3a-fa737262c077",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
