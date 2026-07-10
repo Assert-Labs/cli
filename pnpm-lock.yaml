@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      smol-toml:
-        specifier: ^1.7.0
-        version: 1.7.0
     devDependencies:
       '@types/node':
         specifier: ^20.10.0
@@ -18,6 +14,9 @@ importers:
       esbuild:
         specifier: ^0.28.0
         version: 0.28.0
+      smol-toml:
+        specifier: ^1.7.0
+        version: 1.7.0
       tsx:
         specifier: ^4.7.0
         version: 4.22.3
