@@ -1,0 +1,33 @@
+tests/hooks/codex.test.ts
+  s_1ec925bf79d491::t_3bb1b81cdd9f64 113-130
+  s_1ec925bf79d491::t_f2bef148b18895 13,16
+src/hooks/session-recorder.ts
+  s_1ec925bf79d491::t_2d6421c54bbd25 267-276
+src/cli.ts
+  s_1ec925bf79d491::t_9f0436755af425 48
+  s_1ec925bf79d491::t_d22980a0d2ba91 19
+  s_1ec925bf79d491::t_9c60fc71f48554 765,770-772,785-796
+  s_1ec925bf79d491::t_3c99bfd1960df3 820
+  s_1ec925bf79d491::t_e85f8ff2a2a39e 879
+  s_1ec925bf79d491::t_e76f6f83177b8d 910-963
+  s_1ec925bf79d491::t_8d12f807198260 1034-1035
+  s_1ec925bf79d491::t_8550812c204640 1140-1159
+tests/cli.test.ts
+  s_1ec925bf79d491::t_b1737d638cefc8 310,313-314,319-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "23d7d04d989c56804bf6760fc962c33303d6a1d2",
+  "prompts": {},
+  "sessions": {
+    "s_1ec925bf79d491": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0546166-8791-453e-8c3a-fa737262c077",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
