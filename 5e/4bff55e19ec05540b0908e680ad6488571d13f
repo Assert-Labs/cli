@@ -1,0 +1,32 @@
+scripts/build.mjs
+  s_1ec925bf79d491::t_62151a26ed882e 31-38
+  s_1ec925bf79d491::t_57e478bdea3df0 8
+tests/core.test.ts
+  s_1ec925bf79d491::t_b230ab0b4f2de0 1-91
+src/cli.ts
+  s_1ec925bf79d491::t_26680f0ccb64d8 623
+  s_1ec925bf79d491::t_c87e277de6435c 47
+src/core.ts
+  s_1ec925bf79d491::t_6597f1614b4fba 1-221
+package.json
+  s_1ec925bf79d491::t_86aa691c642768 6-12
+  s_1ec925bf79d491::t_9f2f9e1af2debc 42-44
+tsconfig.core.json
+  s_1ec925bf79d491::t_1e180a11697a35 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5e4bff55e19ec05540b0908e680ad6488571d13f",
+  "prompts": {},
+  "sessions": {
+    "s_1ec925bf79d491": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0546166-8791-453e-8c3a-fa737262c077",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
