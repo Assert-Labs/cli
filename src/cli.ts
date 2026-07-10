@@ -44,6 +44,7 @@ import { getRepoId } from './repo-identity';
 import { getSessionsDir, loadIndex } from './session-index';
 
 import { calculateAgentContribution, hashLine, type AttributionRecord } from './line-attribution';
+import { type BlameLine } from './core';
 import { execSync } from 'child_process';
 
 // === Helpers ===
@@ -619,15 +620,7 @@ async function cmdTrace(ref?: string): Promise<void> {
  * Show line-level attribution for a file (like git blame but for agents)
  */
 /** One line of blame: its content plus who authored it. The UI contract. */
-export interface BlameLineRecord {
-  line: number; // 1-indexed
-  content: string;
-  source: 'agent' | 'human' | 'unknown';
-  agent?: SessionSource;
-  modelId?: string;
-  sessionId?: string;
-  turnId?: string;
-}
+export type BlameLineRecord = BlameLine;
 
 /** Blame record for line index `i` (0-indexed), or `unknown` when unattributed. */
 export function blameLineRecord(

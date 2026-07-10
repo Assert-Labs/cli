@@ -1,0 +1,10 @@
+// Emits type declarations for the `@assertlabs/cli/core` subpath export.
+// core is pure (node-free); it type-imports from schema, which comes along.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "emitDeclarationOnly": true,
+    "outDir": "dist"
+  },
+  "include": ["src/core.ts", "src/schema.ts"]
+}
