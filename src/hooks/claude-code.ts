@@ -68,6 +68,7 @@ function ensureTurn(state: SessionState): string {
       timestamp: new Date().toISOString(),
       sessionId: state.sessionId,
       turnId: state.currentTurnId,
+      promptTurnId: state.currentPromptId ?? undefined,
     };
     writeEvent(state.sessionId, startEvent);
   }
@@ -167,15 +168,18 @@ export function handleUserPromptSubmit(data: ClaudeCodeUserPromptSubmit): void {
   // A new human turn ends any in-progress assistant turn.
   state.currentTurnId = null;
 
+  const promptTurnId = createTurnId();
   const event: HumanTurnEvent = {
     type: 'human_turn',
     timestamp: new Date().toISOString(),
     sessionId: session_id,
-    turnId: createTurnId(),
+    turnId: promptTurnId,
     content: prompt,
   };
   writeEvent(session_id, event);
 
+  // The next assistant turn links back to this prompt.
+  state.currentPromptId = promptTurnId;
   saveState(state);
 }
 

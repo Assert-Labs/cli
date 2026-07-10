@@ -626,6 +626,7 @@ export interface BlameLineRecord {
   agent?: SessionSource;
   modelId?: string;
   sessionId?: string;
+  turnId?: string;
 }
 
 /** Blame record for line index `i` (0-indexed), or `unknown` when unattributed. */
@@ -644,6 +645,7 @@ export function blameLineRecord(
     if (attr.agent) rec.agent = attr.agent;
     if (attr.modelId) rec.modelId = attr.modelId;
     if (attr.sessionId) rec.sessionId = attr.sessionId;
+    if (attr.turnId) rec.turnId = attr.turnId;
   }
   return rec;
 }

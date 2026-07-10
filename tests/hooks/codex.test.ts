@@ -91,6 +91,24 @@ describe('codex hook adapter', () => {
     expect(attr.lineHashes).toContain(hashLine('export const x = 1;'));
   });
 
+  it('links the assistant turn to the prompt that triggered it', async () => {
+    await hook('SessionStart', {});
+    await hook('UserPromptSubmit', { prompt: 'do the thing' });
+    await hook('PreToolUse', {
+      tool_name: 'apply_patch',
+      tool_input: { file_path: 'feature.ts' },
+      model: 'gpt-5-codex',
+    });
+    write('feature.ts', 'export const y = 2;\n');
+    await hook('Stop', { last_assistant_message: 'Done.' });
+
+    const events = readEvents('s1');
+    const human = events.find((e) => e.type === 'human_turn');
+    const turnStart = events.find((e) => e.type === 'assistant_turn_start');
+    // Explicit link — no ordering needed to find a line's prompt.
+    expect(turnStart.promptTurnId).toBe(human.turnId);
+  });
+
   it('finalizes idempotently across multiple Stops', async () => {
     await hook('SessionStart', {});
 

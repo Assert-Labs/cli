@@ -108,6 +108,8 @@ export interface SessionState {
   source: string; // 'claude-code' | 'cursor' | 'codex'
   cwd: string;
   currentTurnId: string | null;
+  // Latest human_turn id; the assistant turn links to it (line -> prompt).
+  currentPromptId: string | null;
   // Generic per-adapter scratch space for matching tool calls to results.
   pendingToolCalls: Map<string, string>;
   // Every git repo this session has touched, keyed by absolute gitRoot.
@@ -134,6 +136,7 @@ export function loadState(sessionId: string, source: string): SessionState | nul
       source: data.source ?? source,
       cwd: data.cwd,
       currentTurnId: data.currentTurnId ?? null,
+      currentPromptId: data.currentPromptId ?? null,
       pendingToolCalls: new Map(Object.entries(data.pendingToolCalls ?? {})),
       repos: data.repos ?? {},
     };
@@ -150,6 +153,7 @@ export function saveState(state: SessionState): void {
     source: state.source,
     cwd: state.cwd,
     currentTurnId: state.currentTurnId,
+    currentPromptId: state.currentPromptId,
     pendingToolCalls: Object.fromEntries(state.pendingToolCalls),
     repos: state.repos,
   };
@@ -549,6 +553,7 @@ export function startSession(
     source,
     cwd,
     currentTurnId: null,
+    currentPromptId: null,
     pendingToolCalls: new Map(),
     repos: {},
   };

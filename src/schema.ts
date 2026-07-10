@@ -44,6 +44,7 @@ export interface AssistantTurnStartEvent extends BaseEvent {
   type: 'assistant_turn_start';
   turnId: string;
   model?: string;
+  promptTurnId?: string; // human_turn this assistant turn is responding to
 }
 
 export interface AssistantTextEvent extends BaseEvent {

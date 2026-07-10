@@ -73,6 +73,7 @@ function ensureTurn(state: SessionState, model?: string): string {
       sessionId: state.sessionId,
       turnId: state.currentTurnId,
       model,
+      promptTurnId: state.currentPromptId ?? undefined,
     };
     writeEvent(state.sessionId, startEvent);
   }
@@ -95,15 +96,18 @@ export function handleUserPromptSubmit(data: CodexUserPromptSubmit): void {
   // A new human turn ends any in-progress assistant turn.
   state.currentTurnId = null;
 
+  const promptTurnId = createTurnId();
   const event: HumanTurnEvent = {
     type: 'human_turn',
     timestamp: new Date().toISOString(),
     sessionId: data.session_id,
-    turnId: createTurnId(),
+    turnId: promptTurnId,
     content: data.prompt,
   };
   writeEvent(data.session_id, event);
 
+  // The next assistant turn links back to this prompt.
+  state.currentPromptId = promptTurnId;
   saveState(state);
 }
 

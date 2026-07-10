@@ -251,12 +251,12 @@ describe('CLI integration', () => {
   describe('blameLineRecord (structured blame for --json/--ndjson)', () => {
     const lines = ['const a = 1;', 'const b = 2;', 'const c = 3;'];
     const attribution: AttributionRecord[] = [
-      { lineNumber: 1, hash: 'h1', source: 'agent', sessionId: 'sess-1234-5678', agent: 'codex', modelId: 'openai/gpt-5.5', timestamp: 't' },
+      { lineNumber: 1, hash: 'h1', source: 'agent', sessionId: 'sess-1234-5678', agent: 'codex', modelId: 'openai/gpt-5.5', turnId: 'turn-42', timestamp: 't' },
       { lineNumber: 2, hash: 'h2', source: 'human', timestamp: 't' },
       { lineNumber: 3, hash: 'h3', source: 'unknown', timestamp: 't' },
     ];
 
-    it('emits full agent/model/session for agent lines', () => {
+    it('emits full agent/model/session/turn for agent lines', () => {
       expect(blameLineRecord(attribution, lines, 0)).toEqual({
         line: 1,
         content: 'const a = 1;',
@@ -264,6 +264,7 @@ describe('CLI integration', () => {
         agent: 'codex',
         modelId: 'openai/gpt-5.5',
         sessionId: 'sess-1234-5678', // full id, not truncated
+        turnId: 'turn-42',
       });
     });
 

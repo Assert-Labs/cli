@@ -77,6 +77,7 @@ function ensureTurn(state: SessionState): string {
       timestamp: new Date().toISOString(),
       sessionId: state.sessionId,
       turnId: state.currentTurnId,
+      promptTurnId: state.currentPromptId ?? undefined,
     };
     writeEvent(state.sessionId, startEvent);
   }
@@ -180,16 +181,19 @@ export function handleBeforeSubmitPrompt(data: CursorPrompt): void {
   const state = loadState(sessionId, SOURCE);
   if (!state) return;
 
+  const promptTurnId = createTurnId();
   const event: HumanTurnEvent = {
     type: 'human_turn',
     timestamp: new Date().toISOString(),
     sessionId,
-    turnId: createTurnId(),
+    turnId: promptTurnId,
     content: data.content || '',
   };
   writeEvent(sessionId, event);
 
   state.currentTurnId = null;
+  // The next assistant turn links back to this prompt.
+  state.currentPromptId = promptTurnId;
   saveState(state);
 }
 
