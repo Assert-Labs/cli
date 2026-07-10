@@ -149,6 +149,25 @@ describe('git-driven session sync', () => {
     expect(byText.get('const two = 2;')).toMatchObject({ source: 'agent', turnId: 'turn-2', modelId: 'model-2' });
   });
 
+  it('caches blame in a local index and self-heals on drift', () => {
+    const state = startSession('idx', 'claude-code', repo);
+    fs.appendFileSync(path.join(repo, 'base.ts'), 'const idx = 1;\n');
+    endSession(state, 'completed');
+
+    const content = fs.readFileSync(path.join(repo, 'base.ts'), 'utf-8');
+    // First blame builds the local (uncommitted) index.
+    expect(blameFile(repo, 'base.ts', content)![1]).toMatchObject({ source: 'agent', sessionId: 'idx' });
+    const idxPath = path.join(home, '.assert', 'sessions', repoId, 'blame-index.json');
+    expect(fs.existsSync(idxPath)).toBe(true);
+
+    // A stale signature (e.g. after a branch switch) triggers a rebuild.
+    const stale = JSON.parse(fs.readFileSync(idxPath, 'utf-8'));
+    stale.signature = 'stale';
+    fs.writeFileSync(idxPath, JSON.stringify(stale));
+    expect(blameFile(repo, 'base.ts', content)![1]).toMatchObject({ source: 'agent', sessionId: 'idx' });
+    expect(JSON.parse(fs.readFileSync(idxPath, 'utf-8')).signature).not.toBe('stale');
+  });
+
   it('private mode does not publish into the repo but blame still works locally', () => {
     setCapturePrivate(true);
     const state = startSession('p1', 'claude-code', repo);

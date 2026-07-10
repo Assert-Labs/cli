@@ -17,6 +17,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import {
   createSessionWriter,
   sessionDirName,
@@ -288,16 +289,99 @@ export function readSessionFile(gitRoot: string, sessionId: string): string | nu
   return null;
 }
 
-/** Every session `.jsonl` under a base dir — legacy flat files + `<dir>/` layout. */
+/** Every session `.jsonl` under a base dir — legacy flat files + `<dir>/` layout.
+ * Uses readdir only (no meta.json reads), so it's cheap enough for the hot path. */
 function allSessionEventFiles(base: string): string[] {
   const files: string[] = [];
+  let entries: fs.Dirent[];
   try {
-    for (const f of fs.readdirSync(base)) if (f.endsWith('.jsonl')) files.push(path.join(base, f));
+    entries = fs.readdirSync(base, { withFileTypes: true });
   } catch {
     return files;
   }
-  for (const s of listSessionDirs(base)) files.push(...sessionEventFiles(s.dir));
+  for (const e of entries) {
+    if (e.isFile() && e.name.endsWith('.jsonl')) {
+      files.push(path.join(base, e.name)); // legacy flat
+    } else if (e.isDirectory()) {
+      try {
+        for (const f of fs.readdirSync(path.join(base, e.name))) {
+          if (f.endsWith('.jsonl')) files.push(path.join(base, e.name, f));
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  }
   return files;
+}
+
+// --- Blame index: a local, derived, regenerable cache so `assert blame` reads
+// O(1) instead of scanning every turn file. Not committed; keyed by a cheap
+// fingerprint of the turn-file set so it self-rebuilds on drift (pull/branch).
+
+interface BlameIndex {
+  signature: string;
+  files: Record<string, LineAttributionEvent>;
+}
+
+function blameIndexPath(gitRoot: string): string | null {
+  const repoId = getRepoId(gitRoot)?.repoId;
+  return repoId ? path.join(getSessionsDir(), repoId, 'blame-index.json') : null;
+}
+
+/** Fingerprint of the turn-file set (names only — no content reads). */
+function blameSignature(gitRoot: string): string {
+  const names: string[] = [];
+  for (const base of repoSessionDirs(gitRoot)) names.push(...allSessionEventFiles(base));
+  names.sort();
+  return createHash('sha256').update(names.join('\n')).digest('hex').slice(0, 16);
+}
+
+/** Rebuild the per-file latest-line_attribution index by scanning turn files. */
+export function rebuildBlameIndex(gitRoot: string): BlameIndex {
+  const files: Record<string, LineAttributionEvent> = {};
+  for (const base of repoSessionDirs(gitRoot)) {
+    for (const file of allSessionEventFiles(base)) {
+      for (const line of fs.readFileSync(file, 'utf-8').split('\n')) {
+        if (!line.trim()) continue;
+        let ev: SessionEvent;
+        try {
+          ev = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (ev.type !== 'line_attribution') continue;
+        const cur = files[ev.filePath];
+        if (!cur || ev.timestamp > cur.timestamp) files[ev.filePath] = ev;
+      }
+    }
+  }
+  const index: BlameIndex = { signature: blameSignature(gitRoot), files };
+  const p = blameIndexPath(gitRoot);
+  if (p) {
+    try {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, JSON.stringify(index));
+    } catch {
+      /* best-effort cache */
+    }
+  }
+  return index;
+}
+
+/** Latest line_attribution for a file via the local index, rebuilt on drift. */
+function indexedLatestLineAttribution(gitRoot: string, filePath: string): LineAttributionEvent | null {
+  const p = blameIndexPath(gitRoot);
+  const sig = blameSignature(gitRoot);
+  if (p) {
+    try {
+      const cached: BlameIndex = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      if (cached.signature === sig) return cached.files[filePath] ?? null;
+    } catch {
+      /* missing/corrupt -> rebuild */
+    }
+  }
+  return rebuildBlameIndex(gitRoot).files[filePath] ?? null;
 }
 
 /** Newest line_attribution for a file (across published `.sessions/` and the
@@ -460,7 +544,7 @@ export function blameFile(
   filePath: string,
   currentContent: string,
 ): AttributionRecord[] | null {
-  const prev = latestLineAttribution(gitRoot, filePath);
+  const prev = indexedLatestLineAttribution(gitRoot, filePath);
   if (!prev) return null;
   return carryAttribution(
     snapshotFromOwnership(filePath, prev.lines),
