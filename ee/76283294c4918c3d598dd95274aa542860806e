@@ -1,0 +1,56 @@
+src/cli.ts
+  s_1ec925bf79d491::t_3f0b8271a75ece 577,579-580,582,586,588
+  s_1ec925bf79d491::t_b6f8277606c3c0 39-40
+tests/hooks/codex.test.ts
+  s_1ec925bf79d491::t_42dd1939e22134 17
+  s_1ec925bf79d491::t_1ca54a1f0bfa6d 32
+src/hooks/session-recorder.ts
+  s_1ec925bf79d491::t_8d1bf969b03efa 116
+  s_1ec925bf79d491::t_ef02422cfc2f3f 585
+  s_1ec925bf79d491::t_61c03621ae9493 660-673,675-676
+  s_1ec925bf79d491::t_6a2507e8c808b5 20-26
+  s_1ec925bf79d491::t_956eb0d8bd7ec6 279-286,291-300
+  s_1ec925bf79d491::t_f868a58dc67c07 145
+  s_1ec925bf79d491::t_84a7f4690d51f4 163
+  s_1ec925bf79d491::t_b1952959ccd5e6 311-313
+  s_1ec925bf79d491::t_5bf418efef59cc 301-302
+tests/hooks/cursor.test.ts
+  s_1ec925bf79d491::t_8af9488973e110 29
+  s_1ec925bf79d491::t_c95180abed585b 13
+tests/hooks/session-recorder.test.ts
+  s_1ec925bf79d491::t_d560dcd8ee79ba 69-70,73
+  s_1ec925bf79d491::t_f7dbfe6af02a0a 11
+tests/hooks/session-layout.ts
+  s_1ec925bf79d491::t_166b32c9111b51 1-29,34-43
+  s_1ec925bf79d491::t_24b43c06496095 30-33
+tests/hooks/session-sync.test.ts
+  s_1ec925bf79d491::t_9ab2241ec3dd46 39
+  s_1ec925bf79d491::t_6857ff2a7cd0ec 67,71,98,102,160
+  s_1ec925bf79d491::t_21b106066655c5 24
+  s_1ec925bf79d491::t_49d79e523f8bd4 174
+src/session-writer.ts
+  s_1ec925bf79d491::t_00bf708e91d24e 122,124-128,130-161,165-166,173,177-178
+  s_1ec925bf79d491::t_19bfd9b5baae99 98-100,102-103,105-112,115-119,121
+tests/hooks/claude-code.test.ts
+  s_1ec925bf79d491::t_35cfc29d27baac 28
+  s_1ec925bf79d491::t_7c39fe3af75bec 13
+tests/session-writer.test.ts
+  s_1ec925bf79d491::t_c7ac10c16c4e30 312-331
+  s_1ec925bf79d491::t_613853efd94204 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "ee76283294c4918c3d598dd95274aa542860806e",
+  "prompts": {},
+  "sessions": {
+    "s_1ec925bf79d491": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0546166-8791-453e-8c3a-fa737262c077",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
