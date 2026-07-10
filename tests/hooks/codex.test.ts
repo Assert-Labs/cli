@@ -14,7 +14,7 @@ import { loadState, setCaptureDisabled, blameFile, readSessionFile } from '../..
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { hashLine } from '../../src/line-attribution';
 import { parseSession, getTurn } from '../../src/core';
-import { readRepoEvents } from './session-layout';
+import { readRepoEvents, repoSessionDir } from './session-layout';
 
 describe('codex hook adapter', () => {
   let originalHome: string | undefined;
@@ -123,7 +123,7 @@ describe('codex hook adapter', () => {
     expect(getTurn(session, turnId)?.prompt?.text).toBe('add a feature');
   });
 
-  it('finalizes idempotently across multiple Stops', async () => {
+  it('writes one immutable file per turn; blame reflects the latest', async () => {
     await hook('SessionStart', {});
 
     write('feature.ts', 'line one\n');
@@ -132,12 +132,10 @@ describe('codex hook adapter', () => {
     write('feature.ts', 'line one\nline two\n');
     await hook('Stop', { last_assistant_message: 'second' });
 
-    // The session file is rewritten each Stop, so exactly one line_attribution
-    // per file survives — not one per Stop.
-    const lineAttrs = readEvents('s1').filter(
-      (e) => e.type === 'line_attribution' && e.filePath === 'feature.ts',
-    );
-    expect(lineAttrs).toHaveLength(1);
+    // Two turns -> two immutable turn files (the first is never rewritten).
+    const dir = repoSessionDir(repo, 's1')!;
+    const turnFiles = fs.readdirSync(dir).filter((f) => /^\d+-.+\.jsonl$/.test(f));
+    expect(turnFiles).toHaveLength(2);
 
     // Blame reflects the latest turn (both added lines), not a stale snapshot.
     const content = fs.readFileSync(path.join(repo, 'feature.ts'), 'utf-8');

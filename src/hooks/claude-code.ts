@@ -92,10 +92,11 @@ export function handleSessionEnd(data: ClaudeCodeSessionEnd): void {
 export function handleStop(data: ClaudeCodeSessionEnd): void {
   const state = loadState(data.session_id, SOURCE);
   if (!state) return;
-  // End of a turn, not the session: sync changes so far, keep the session open.
+  // End of a turn, not the session: finalize this turn's attribution and
+  // materialize it, keeping the session open.
   state.currentTurnId = null;
   saveState(state);
-  syncSession(state, data.transcript_path);
+  syncSession(state, data.transcript_path, true);
 }
 
 export function handlePreToolUse(data: ClaudeCodePreToolUse): void {

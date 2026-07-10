@@ -615,6 +615,59 @@ function resolveSessionFile(state: SessionState, transcriptPath?: string): strin
   }
 }
 
+interface TurnBucket {
+  turnId: string;
+  lines: string[];
+}
+
+/**
+ * Split a transcript into per-turn buckets ("exchanges"): a turn starts at a
+ * human_turn (the prompt) or an assistant_turn_start, and holds everything until
+ * the next one. Each bucket is keyed by its assistant turnId (what blame's
+ * line_attribution references), falling back to the prompt id. Leading orphan
+ * events (session_start) fold into the first bucket. Stable across re-splits of
+ * a grown transcript, so materialized turn files stay immutable.
+ */
+function splitTranscriptByTurn(transcript: string): TurnBucket[] {
+  interface Segment {
+    assistantTurnId?: string;
+    humanTurnId?: string;
+    lines: string[];
+  }
+  const segs: Segment[] = [];
+  let leading: string[] = [];
+
+  for (const raw of transcript.split('\n')) {
+    if (!raw.trim()) continue;
+    let ev: { type?: string; turnId?: string };
+    try {
+      ev = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const cur = segs[segs.length - 1];
+    if (ev.type === 'human_turn') {
+      segs.push({ humanTurnId: ev.turnId, lines: [...leading, raw] });
+      leading = [];
+    } else if (ev.type === 'assistant_turn_start') {
+      // The response to the current prompt joins its segment; a second assistant
+      // turn without an intervening prompt starts a new one.
+      if (cur && !cur.assistantTurnId) {
+        cur.assistantTurnId = ev.turnId;
+        cur.lines.push(raw);
+      } else {
+        segs.push({ assistantTurnId: ev.turnId, lines: [...leading, raw] });
+        leading = [];
+      }
+    } else if (cur) {
+      cur.lines.push(raw);
+    } else {
+      leading.push(raw); // orphan before any turn (e.g. session_start)
+    }
+  }
+  return segs.map((s) => ({ turnId: s.assistantTurnId ?? s.humanTurnId ?? 'session', lines: s.lines }));
+}
+
 /**
  * Sync the session into one repo: find what the agent changed there via git
  * (any change, however made), honoring `.assertignore`. Writes the session
@@ -637,29 +690,35 @@ function syncRepo(
   for (const f of changed) index = indexFileModification(index, state.sessionId, repo.repoId, f);
   saveIndex(index);
 
-  let body = '';
+  let transcript = '';
   try {
-    body = fs.readFileSync(sessionFile, 'utf-8').replace(/\n+$/, '');
+    transcript = fs.readFileSync(sessionFile, 'utf-8');
   } catch {
     /* no session file yet */
   }
+  const turns = splitTranscriptByTurn(transcript);
 
+  // Attribution for changed files (full current ownership), appended to the
+  // latest turn's file so blame reads the newest snapshot per file.
+  let attribution: string[] = [];
   if (final) {
     const baseline = new Map<string, string>();
     for (const f of changed) baseline.set(f, fileAtRef(repo.gitRoot, repo.startRef, f) ?? '');
-
-    // Re-finalize is idempotent: threading reads the latest attribution
-    // excluding this session, so re-running just rewrites this session's events.
-    const attrs = fileAttributions(state, repo, changed, baseline, turn);
-    if (attrs.length) {
-      const serialized = attrs.map(serializeSessionEvent).join('\n');
-      body = body ? `${body}\n${serialized}` : serialized;
-    }
+    attribution = fileAttributions(state, repo, changed, baseline, turn).map(serializeSessionEvent);
   }
 
-  // Materialize into a per-session directory (`<time>-<id8>/`) with a meta.json.
-  // Always kept locally (source of truth, powers blame even in private mode);
-  // publishing into the repo is just a copy.
+  // Changes can happen outside an assistant turn (e.g. bash/formatter, or a
+  // direct syncSession); still materialize the orphan transcript + attribution
+  // under a session-level bucket so blame has a home.
+  if (turns.length === 0) {
+    const orphan = transcript.split('\n').filter((l) => l.trim());
+    if (orphan.length === 0 && attribution.length === 0) return;
+    turns.push({ turnId: turn.turnId ?? state.currentTurnId ?? 'session', lines: orphan });
+  }
+
+  // Immutable per-turn files in a per-session dir (`<time>-<id8>/`): each turn is
+  // written once (keyed by turnId), so continuing a session only ADDS files —
+  // never rewrites — which keeps the working tree free of session churn.
   const dirName = sessionDirName(state.sessionId, state.createdAt);
   const writeInto = (base: string) => {
     const sdir = path.join(base, dirName);
@@ -669,7 +728,17 @@ function syncRepo(
       const meta = { sessionId: state.sessionId, source: state.source, createdAt: state.createdAt };
       fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
     }
-    fs.writeFileSync(path.join(sdir, `${state.sessionId}.jsonl`), `${body}\n`);
+    const existing = new Set(
+      sessionEventFiles(sdir)
+        .map((f) => /^\d+-(.+)\.jsonl$/.exec(path.basename(f))?.[1])
+        .filter((id): id is string => !!id),
+    );
+    turns.forEach((t, i) => {
+      if (existing.has(t.turnId)) return; // immutable: already materialized
+      const lines = [...t.lines];
+      if (i === turns.length - 1) lines.push(...attribution);
+      fs.writeFileSync(path.join(sdir, `${String(i).padStart(4, '0')}-${t.turnId}.jsonl`), `${lines.join('\n')}\n`);
+    });
   };
 
   writeInto(path.join(getSessionsDir(), repo.repoId));

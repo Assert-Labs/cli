@@ -33,6 +33,7 @@ function asText(content: unknown): string {
 export function normalizeClaudeTranscript(jsonl: string, sessionId: string): SessionEvent[] {
   const events: SessionEvent[] = [];
   let turnId = '';
+  let lastPromptId = ''; // human_turn preceding the current assistant turn
 
   for (const line of jsonl.split('\n')) {
     if (!line.trim()) continue;
@@ -54,12 +55,15 @@ export function normalizeClaudeTranscript(jsonl: string, sessionId: string): Ses
         }
       } else {
         const text = asText(content);
-        if (text) events.push({ type: 'human_turn', timestamp, sessionId, turnId: createTurnId(), content: text });
+        if (text) {
+          lastPromptId = createTurnId();
+          events.push({ type: 'human_turn', timestamp, sessionId, turnId: lastPromptId, content: text });
+        }
       }
     } else if (o.type === 'assistant' && msg) {
       turnId = msg.id || o.uuid || createTurnId();
       const model = normalizeModelId(msg.model);
-      events.push({ type: 'assistant_turn_start', timestamp, sessionId, turnId, model });
+      events.push({ type: 'assistant_turn_start', timestamp, sessionId, turnId, model, promptTurnId: lastPromptId || undefined });
       for (const b of Array.isArray(msg.content) ? msg.content : []) {
         if (b?.type === 'thinking') {
           events.push({ type: 'assistant_reasoning', timestamp, sessionId, turnId, text: b.thinking ?? '', signature: b.signature });

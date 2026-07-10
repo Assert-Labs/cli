@@ -107,10 +107,11 @@ export function handleStop(data: CursorSessionEnd): void {
   if (!sessionId) return;
   const state = loadState(sessionId, SOURCE);
   if (!state) return;
-  // End of a turn, not the session: sync changes so far, keep the session open.
+  // End of a turn, not the session: finalize this turn's attribution and
+  // materialize it, keeping the session open.
   state.currentTurnId = null;
   saveState(state);
-  syncSession(state);
+  syncSession(state, undefined, true);
 }
 
 export function handlePreToolUse(data: CursorToolUse): void {
