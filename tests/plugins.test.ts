@@ -43,6 +43,9 @@ describe('plugins', () => {
     expect(skill).toContain('.sessions/');
     expect(skill.toLowerCase()).toContain('commit');
     expect(skill.toLowerCase()).toContain('enabled');
+    expect(skill).toContain('Do **not** invoke redaction for');
+    expect(skill).toContain('rare fallback');
+    expect(skill).toContain('Do not proactively scan every turn');
   });
 
   it('Claude Code plugin gates version-specific events', () => {

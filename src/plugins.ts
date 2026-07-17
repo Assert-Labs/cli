@@ -112,10 +112,18 @@ Layout: one directory per session, \`.sessions/<timestamp>-<id>/\`, containing a
   ignore them, and don't treat them as stray output; they're intentional history.
 - Include \`.sessions/\` changes in your commit alongside the related code (e.g.
   \`git add -A\`).
-- If you clearly encounter credentials, customer data, private URLs, or other
-  semantic sensitive data that automatic detectors may miss, immediately run
-  \`assert redact last-tool-input\`, \`assert redact last-tool-output\`, or
-  \`assert redact current-turn\`. Do not repeat the sensitive value in the command.
+- Published sessions are sanitized automatically. Do **not** invoke redaction for
+  API keys, known token formats, private-key blocks, Bearer authorization,
+  password/token/secret fields, absolute home/repository paths, or content already
+  marked \`[REDACTED:*]\`; the CLI handles these deterministically.
+- Model-directed redaction is a rare fallback only for semantic private data the
+  detectors cannot recognize, such as customer/personal data, confidential
+  business context, private internal URLs, or information the user explicitly
+  identifies as private. Do not proactively scan every turn.
+- Prefer the narrowest applicable command: \`assert redact last-tool-input\` or
+  \`assert redact last-tool-output\`. Use \`assert redact current-turn\` only when
+  essentially the whole turn is sensitive. Never repeat the sensitive value in
+  the command.
 
 Commands:
 - \`assert disable\` / \`assert enable\` — stop / resume capture entirely.
