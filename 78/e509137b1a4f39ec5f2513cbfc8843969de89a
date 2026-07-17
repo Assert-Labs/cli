@@ -1,0 +1,93 @@
+src/session-writer.ts
+  s_2a58cc3f9732a0::t_0c1b03269e20a9 260,262-270
+  s_2a58cc3f9732a0::t_7918a60c55d57c 154,158-172
+  s_2a58cc3f9732a0::t_c2800149010a6f 121
+  s_2a58cc3f9732a0::t_d9923e17b48818 209,220-226
+tests/session-writer.test.ts
+  s_2a58cc3f9732a0::t_c7886f424fb2a5 316-349
+  s_2a58cc3f9732a0::t_3969049f08adab 15,35-48
+  s_2a58cc3f9732a0::t_ef5ded91d49ff0 20,293-315
+  s_2a58cc3f9732a0::t_2901e7a814caba 49-50
+src/session-index.ts
+  s_2a58cc3f9732a0::t_2b016b735ae836 193-202
+src/core.ts
+  s_2a58cc3f9732a0::t_6097959829b3d5 268-278
+  s_2a58cc3f9732a0::t_d3acdd572582ee 64,211,232,255,284
+  s_2a58cc3f9732a0::t_c2800149010a6f 81,146
+  s_2a58cc3f9732a0::t_fea715189b4f37 91,94-109,115-119,121,147-151,156,159
+  s_2a58cc3f9732a0::t_1cec9737d8ce73 110-114,120,122-123,143
+  s_2a58cc3f9732a0::t_96d5e32b6c3194 89-90,92,144-145,174,182,201-207,212,233,256,258,283,285
+  s_2a58cc3f9732a0::t_0f236d59aa21ee 152,161-170,172
+  s_2a58cc3f9732a0::t_1164304430e6f5 93
+src/hooks/session-recorder.ts
+  s_2a58cc3f9732a0::t_96d5e32b6c3194 872-878
+  s_2a58cc3f9732a0::t_3908838bb54f38 733,738-741,746,752,763-764
+  s_2a58cc3f9732a0::t_37b0287063e07a 1042,1045,1051,1058-1061
+  s_2a58cc3f9732a0::t_5327e282ef1362 36,119
+  s_2a58cc3f9732a0::t_8f30a2fdf138c9 958-960,979,981-986,988-989,996-1003
+  s_2a58cc3f9732a0::t_ee22f76c68c9bc 980,987,994,1005
+  s_2a58cc3f9732a0::t_a02de3fc07b0d3 137,149,160-164,173
+  s_2a58cc3f9732a0::t_0c1b03269e20a9 747-751,753-762,782-796,869-870
+  s_2a58cc3f9732a0::t_c2800149010a6f 811-832,993,995,1004,1006
+  s_2a58cc3f9732a0::t_fc072fe6757f2d 721-732,734-737,742-745,765-773
+  s_2a58cc3f9732a0::t_d9923e17b48818 858-864,922-938,970-978
+  s_2a58cc3f9732a0::t_d8b88b12eddff8 204
+  s_2a58cc3f9732a0::t_f8d4f54c9bc468 529-539,547
+tests/core.test.ts
+  s_2a58cc3f9732a0::t_14bf9fc052a876 108,165
+  s_2a58cc3f9732a0::t_a6fb630c824b42 168
+  s_2a58cc3f9732a0::t_3969049f08adab 170-179
+  s_2a58cc3f9732a0::t_79e2e27abce5d0 91-107,109-119,127-130,132-164,166-167,169,180
+  s_2a58cc3f9732a0::t_2e145a498d15de 120-126,131
+src/schema.ts
+  s_2a58cc3f9732a0::t_0c1b03269e20a9 34-37,152
+src/hooks/cursor.ts
+  s_2a58cc3f9732a0::t_fc072fe6757f2d 17,90-91
+src/hooks/codex.ts
+  s_2a58cc3f9732a0::t_fc072fe6757f2d 20,84-85
+tests/hooks/claude-code.test.ts
+  s_2a58cc3f9732a0::t_dcfbae252c39bb 19,175-203,207-212
+  s_2a58cc3f9732a0::t_3969049f08adab 12-18,213-269
+  s_2a58cc3f9732a0::t_ac05ba7a4444e1 100-174,270-271
+  s_2a58cc3f9732a0::t_7cb32ce83e3472 204-206
+tests/hooks/cursor.test.ts
+  s_2a58cc3f9732a0::t_ad510439dee148 12-13,93-120
+  s_2a58cc3f9732a0::t_451253f8ee26cf 121-122
+tests/transcript.test.ts
+  s_2a58cc3f9732a0::t_14bf9fc052a876 110-131
+  s_2a58cc3f9732a0::t_79e2e27abce5d0 67-109
+  s_2a58cc3f9732a0::t_dcfbae252c39bb 55-66
+  s_2a58cc3f9732a0::t_a6fb630c824b42 132-154,157
+  s_2a58cc3f9732a0::t_c3f5cb77588304 155-156
+tests/hooks/codex.test.ts
+  s_2a58cc3f9732a0::t_ad510439dee148 149-186
+src/hooks/claude-code.ts
+  s_2a58cc3f9732a0::t_fc072fe6757f2d 13,80-86
+  s_2a58cc3f9732a0::t_ac05ba7a4444e1 35
+src/transcript.ts
+  s_2a58cc3f9732a0::t_0f236d59aa21ee 40,64,75-77
+  s_2a58cc3f9732a0::t_96d5e32b6c3194 38,80-83
+  s_2a58cc3f9732a0::t_c2800149010a6f 7,71-74,78-79
+  s_2a58cc3f9732a0::t_79ef74282e81ff 8,61-63,65-66
+tests/hooks/session-sync.test.ts
+  s_2a58cc3f9732a0::t_c7886f424fb2a5 24-28,137-162
+  s_2a58cc3f9732a0::t_04454278d7467f 163,229-249
+  s_2a58cc3f9732a0::t_dcfbae252c39bb 13,94-136
+  s_2a58cc3f9732a0::t_a6af1745b456ec 164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "78e509137b1a4f39ec5f2513cbfc8843969de89a",
+  "prompts": {},
+  "sessions": {
+    "s_2a58cc3f9732a0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a18150b7ffe1A03Inn1GGFevv",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
