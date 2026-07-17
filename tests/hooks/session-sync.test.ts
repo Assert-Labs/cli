@@ -75,6 +75,9 @@ describe('git-driven session sync', () => {
     write('edited.ts', 'x\n');
     syncSession(state);
     expect(hasSession('s1')).toBe(true);
+    expect(
+      fs.readFileSync(path.join(repo, '.sessions', 'README.md'), 'utf-8'),
+    ).toContain('Sanitized AI coding-session provenance');
   });
 
   it('captures changes not made through edit tools', () => {

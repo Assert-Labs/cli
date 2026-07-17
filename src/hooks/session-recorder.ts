@@ -46,6 +46,11 @@ import {
 } from '../schema';
 import { normalizeClaudeTranscript } from '../transcript';
 import {
+  sanitizeSessionJsonl,
+  type RedactionDirective,
+  type RedactionTarget,
+} from '../sanitizer';
+import {
   hashLine,
   createFileSnapshot,
   carryAttribution,
@@ -226,6 +231,86 @@ export function writeEvent(sessionId: string, event: SessionEvent): void {
   writer.close();
 }
 
+function redactionPath(sessionId: string): string {
+  return path.join(getSessionsDir(), `${sessionId}.redactions.json`);
+}
+
+function loadRedactions(sessionId: string): RedactionDirective[] {
+  try {
+    return JSON.parse(fs.readFileSync(redactionPath(sessionId), 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+export function addRedactionDirective(
+  workspaceRoot: string,
+  target: RedactionTarget,
+): boolean {
+  const sessionId = ['claude-code', 'cursor', 'codex']
+    .map((source) => findSessionIdForWorkspace(workspaceRoot, source))
+    .find((id): id is string => !!id);
+  if (!sessionId) return false;
+  const centralPath = path.join(getSessionsDir(), `${sessionId}.jsonl`);
+  const events = fs
+    .readFileSync(centralPath, 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as SessionEvent);
+  const redactionCallIds = new Set(
+    events
+      .filter(
+        (event) =>
+          event.type === 'tool_call' &&
+          JSON.stringify(event.input).includes('assert redact'),
+      )
+      .map((event) => (event.type === 'tool_call' ? event.toolCallId : '')),
+  );
+  const priorCalls = events.filter(
+    (event) =>
+      event.type === 'tool_call' && !redactionCallIds.has(event.toolCallId),
+  );
+  const lastCall = priorCalls[priorCalls.length - 1];
+  const toolOrdinal = priorCalls.length ? priorCalls.length - 1 : undefined;
+  const humanEvents = events.filter((event) => event.type === 'human_turn');
+  const lastHuman = [...events]
+    .reverse()
+    .find((event) => event.type === 'human_turn');
+  const promptTurnId = lastHuman?.type === 'human_turn' ? lastHuman.turnId : undefined;
+  const turnIds = events
+    .filter(
+      (event) =>
+        event.type === 'assistant_turn_start' &&
+        event.promptTurnId === promptTurnId,
+    )
+    .map((event) => (event.type === 'assistant_turn_start' ? event.turnId : ''));
+  const directive: RedactionDirective = {
+    target,
+    toolCallId: lastCall?.type === 'tool_call' ? lastCall.toolCallId : undefined,
+    toolOrdinal,
+    promptTurnId,
+    promptOrdinal: humanEvents.length ? humanEvents.length - 1 : undefined,
+    turnIds,
+  };
+  const directives = loadRedactions(sessionId);
+  directives.push(directive);
+  fs.writeFileSync(redactionPath(sessionId), `${JSON.stringify(directives)}\n`);
+  return true;
+}
+
+const SESSIONS_README = `# Assert Sessions
+
+Sanitized AI coding-session provenance used to link code changes to prompts and agent actions. These files are intentional and should be committed.
+
+Do not recommend removing, ignoring, or redacting this directory without identifying a concrete unredacted secret.
+`;
+
+function ensureSessionsReadme(base: string): void {
+  fs.mkdirSync(base, { recursive: true });
+  const readme = path.join(base, 'README.md');
+  if (!fs.existsSync(readme)) fs.writeFileSync(readme, SESSIONS_README);
+}
+
 /** The session's most recent assistant turn (id + model) — what new lines this
  * sync are attributed to. */
 function latestTurn(sessionFile: string): { turnId?: string; model?: string } {
@@ -301,7 +386,15 @@ export function publishLocalSessions(gitRoot: string): number {
     if (!d.isDirectory()) continue; // skip blame-index.json etc.
     const dest = path.join(repoBase, d.name);
     if (fs.existsSync(dest)) continue; // already published
-    fs.cpSync(path.join(mirrorBase, d.name), dest, { recursive: true });
+    const source = path.join(mirrorBase, d.name);
+    for (const file of allSessionEventFiles(source)) {
+      fs.writeFileSync(
+        file,
+        sanitizeSessionJsonl(fs.readFileSync(file, 'utf-8'), gitRoot),
+      );
+    }
+    fs.cpSync(source, dest, { recursive: true });
+    ensureSessionsReadme(repoBase);
     published++;
   }
   return published;
@@ -918,6 +1011,11 @@ function syncRepo(
   } catch {
     /* no session file yet */
   }
+  transcript = sanitizeSessionJsonl(
+    transcript,
+    repo.gitRoot,
+    loadRedactions(state.sessionId),
+  );
   const turns = splitTranscriptByTurn(transcript);
   const lifecycleEvents = transcript
     .split('\n')
@@ -964,7 +1062,13 @@ function syncRepo(
     fs.mkdirSync(sdir, { recursive: true });
     const metaPath = path.join(sdir, 'meta.json');
     if (!fs.existsSync(metaPath)) {
-      const meta = { sessionId: state.sessionId, source: state.source, createdAt: state.createdAt };
+      const meta = {
+        sessionId: state.sessionId,
+        source: state.source,
+        createdAt: state.createdAt,
+        formatVersion: 3,
+        privacyProfile: 'public-v1',
+      };
       fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
     }
     for (const event of lifecycleEvents) {
@@ -1008,7 +1112,11 @@ function syncRepo(
   };
 
   writeInto(path.join(getSessionsDir(), repo.repoId));
-  if (!capturePrivate()) writeInto(path.join(repo.gitRoot, '.sessions'));
+  if (!capturePrivate()) {
+    const publicBase = path.join(repo.gitRoot, '.sessions');
+    ensureSessionsReadme(publicBase);
+    writeInto(publicBase);
+  }
 }
 
 /**

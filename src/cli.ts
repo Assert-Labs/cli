@@ -19,7 +19,9 @@ import {
   readSessionFile,
   rebuildBlameIndex,
   publishLocalSessions,
+  addRedactionDirective,
 } from './hooks/session-recorder';
+import type { RedactionTarget } from './sanitizer';
 import {
   claudePluginDir,
   cursorPluginDir,
@@ -1059,6 +1061,7 @@ Usage:
   assert private                 Keep capturing locally, but stop writing sessions into this repo
   assert public                  Resume writing sessions into this repo (default)
   assert sync                    Publish local sessions into the repo + rebuild the blame index
+  assert redact <target>         Redact current-turn, last-tool-input, or last-tool-output
   assert disable                 Stop capturing entirely (hooks stay installed)
   assert enable                  Resume capturing
   assert help                    Show this help
@@ -1189,6 +1192,19 @@ async function main(): Promise<void> {
     case 'sync':
       cmdSync();
       break;
+    case 'redact': {
+      const target = args[1];
+      if (!['current-turn', 'last-tool-input', 'last-tool-output'].includes(target)) {
+        error('Usage: assert redact <current-turn|last-tool-input|last-tool-output>');
+        process.exitCode = 1;
+        break;
+      }
+      if (!addRedactionDirective(process.cwd(), target as RedactionTarget)) {
+        error('No active Assert session found for this workspace');
+        process.exitCode = 1;
+      }
+      break;
+    }
     case 'disable':
       cmdDisable();
       break;

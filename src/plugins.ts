@@ -112,6 +112,10 @@ Layout: one directory per session, \`.sessions/<timestamp>-<id>/\`, containing a
   ignore them, and don't treat them as stray output; they're intentional history.
 - Include \`.sessions/\` changes in your commit alongside the related code (e.g.
   \`git add -A\`).
+- If you clearly encounter credentials, customer data, private URLs, or other
+  semantic sensitive data that automatic detectors may miss, immediately run
+  \`assert redact last-tool-input\`, \`assert redact last-tool-output\`, or
+  \`assert redact current-turn\`. Do not repeat the sensitive value in the command.
 
 Commands:
 - \`assert disable\` / \`assert enable\` — stop / resume capture entirely.
