@@ -1,0 +1,21 @@
+src/plugins.ts
+  s_2a58cc3f9732a0::t_05d9f3c4a7d9e1 115-126
+tests/plugins.test.ts
+  s_2a58cc3f9732a0::t_6b35052788174e 46-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "565adfddd4a4a4787fc32000abc2c0796a763181",
+  "prompts": {},
+  "sessions": {
+    "s_2a58cc3f9732a0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a18150b7ffe1A03Inn1GGFevv",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
