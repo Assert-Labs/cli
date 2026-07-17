@@ -14,7 +14,7 @@ import {
   type SessionState,
   loadState,
   saveState,
-  startSession,
+  startOrResumeSession,
   endSession,
   syncSession,
   recordFileEdit,
@@ -87,8 +87,8 @@ function ensureTurn(state: SessionState): string {
 export function handleSessionStart(data: CursorSessionStart): void {
   const cwd = data.workspaceRoot || process.cwd();
   const sessionId = data.sessionId || createSessionId();
-  startSession(sessionId, SOURCE, cwd);
-  console.error(`[assert] Cursor session started: ${sessionId}`);
+  const { resumed } = startOrResumeSession(sessionId, SOURCE, cwd);
+  console.error(`[assert] Cursor session ${resumed ? 'resumed' : 'started'}: ${sessionId}`);
 }
 
 export function handleSessionEnd(data: CursorSessionEnd): void {

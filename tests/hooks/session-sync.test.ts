@@ -10,6 +10,7 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import {
   startSession,
+  startOrResumeSession,
   recordFileEdit,
   syncSession,
   endSession,
@@ -20,7 +21,11 @@ import {
 import { processHook } from '../../src/hooks/claude-code';
 import { loadState, setCaptureDisabled, setCapturePrivate } from '../../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../../src/repo-identity';
-import { loadIndex, findSessionsForFiles } from '../../src/session-index';
+import {
+  loadIndex,
+  findSessionsForFiles,
+  getIndexPath,
+} from '../../src/session-index';
 import { hashLine } from '../../src/line-attribution';
 import { repoHasSession, readRepoEvents } from './session-layout';
 
@@ -86,6 +91,77 @@ describe('git-driven session sync', () => {
     expect(findSessionsForFiles(index, repoId, ['generated.ts'])).toContain('s2');
   });
 
+  it('tracks a resumed cwd before checkpointing its changes', () => {
+    const otherRepo = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'assert-sync-other-repo-')),
+    );
+    try {
+      execSync('git init', { cwd: otherRepo, stdio: 'pipe' });
+      execSync('git config user.email test@test.com', {
+        cwd: otherRepo,
+        stdio: 'pipe',
+      });
+      execSync('git config user.name test', { cwd: otherRepo, stdio: 'pipe' });
+      fs.writeFileSync(path.join(otherRepo, 'base.ts'), 'const base = 1;\n');
+      execSync('git add . && git commit -m init', {
+        cwd: otherRepo,
+        stdio: 'pipe',
+      });
+
+      const state = startSession('resume-cwd', 'cursor', repo);
+      writeEvent('resume-cwd', {
+        type: 'assistant_turn_start',
+        timestamp: new Date().toISOString(),
+        sessionId: 'resume-cwd',
+        turnId: 'turn-1',
+      });
+      fs.writeFileSync(path.join(otherRepo, 'new.ts'), 'created before resume\n');
+
+      const resumed = startOrResumeSession(
+        'resume-cwd',
+        'cursor',
+        otherRepo,
+      ).state;
+      expect(resumed.repos[otherRepo]).toBeDefined();
+      expect(
+        blameFile(
+          otherRepo,
+          'new.ts',
+          fs.readFileSync(path.join(otherRepo, 'new.ts'), 'utf-8'),
+        )?.[0],
+      ).toMatchObject({ source: 'agent', turnId: 'turn-1' });
+      expect(state.createdAt).toBe(resumed.createdAt);
+    } finally {
+      fs.rmSync(otherRepo, { recursive: true, force: true, maxRetries: 5 });
+    }
+  });
+
+  it('rebuilds a missing index when resuming and ending a session', () => {
+    const state = startSession('resume-index', 'cursor', repo);
+    writeEvent('resume-index', {
+      type: 'assistant_turn_start',
+      timestamp: new Date().toISOString(),
+      sessionId: 'resume-index',
+      turnId: 'turn-1',
+    });
+    write('resumed.ts', 'created\n');
+    endSession(state, 'completed');
+
+    fs.rmSync(getIndexPath(), { force: true });
+    const resumed = startOrResumeSession(
+      'resume-index',
+      'cursor',
+      repo,
+    ).state;
+    expect(loadIndex().sessions['resume-index']?.isActive).toBe(true);
+    expect(findSessionsForFiles(loadIndex(), repoId, ['resumed.ts'])).toContain(
+      'resume-index',
+    );
+
+    endSession(resumed, 'completed');
+    expect(loadIndex().sessions['resume-index']?.isActive).toBe(false);
+  });
+
   it('respects .assertignore', () => {
     write('.assertignore', 'ignored/\n*.log\n');
     git('add .assertignore');
@@ -148,6 +224,27 @@ describe('git-driven session sync', () => {
     );
     expect(byText.get('const one = 1;')).toMatchObject({ source: 'agent', turnId: 'turn-1', modelId: 'model-1' });
     expect(byText.get('const two = 2;')).toMatchObject({ source: 'agent', turnId: 'turn-2', modelId: 'model-2' });
+  });
+
+  it('does not append files for an unchanged repeated final sync', () => {
+    const state = startSession('idempotent', 'cursor', repo);
+    writeEvent('idempotent', {
+      type: 'assistant_turn_start',
+      timestamp: new Date().toISOString(),
+      sessionId: 'idempotent',
+      turnId: 'turn-1',
+    });
+    write('idempotent.ts', 'created\n');
+    syncSession(state, undefined, true);
+    const sessionDir = path.join(repo, '.sessions');
+    const countEventFiles = () =>
+      fs
+        .readdirSync(sessionDir, { recursive: true })
+        .filter((file) => String(file).endsWith('.jsonl')).length;
+    const before = countEventFiles();
+
+    syncSession(state, undefined, true);
+    expect(countEventFiles()).toBe(before);
   });
 
   it('publishes local-only (private) sessions into the repo (assert sync)', () => {

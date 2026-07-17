@@ -190,6 +190,16 @@ export function endSession(index: SessionIndex, sessionId: string, endTime: stri
   return index;
 }
 
+/** Mark a previously ended session active again when an agent resumes it. */
+export function resumeSession(index: SessionIndex, sessionId: string): SessionIndex {
+  const session = index.sessions[sessionId];
+  if (session) {
+    delete session.endTime;
+    session.isActive = true;
+  }
+  return index;
+}
+
 /**
  * Find sessions that modified a specific file
  */

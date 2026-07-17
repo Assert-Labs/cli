@@ -33,6 +33,7 @@ import {
   indexSession,
   indexFileModification,
   endSession as endSessionIndex,
+  resumeSession as resumeSessionIndex,
   getSessionsDir,
   ensureSessionsDir,
 } from '../session-index';
@@ -115,6 +116,7 @@ export interface SessionState {
   source: string; // 'claude-code' | 'cursor' | 'codex'
   cwd: string;
   createdAt: string; // session creation time; seeds the (stable) session dir name
+  endedAt?: string;
   currentTurnId: string | null;
   // Latest human_turn id; the assistant turn links to it (line -> prompt).
   currentPromptId: string | null;
@@ -132,7 +134,7 @@ function getStatePath(sessionId: string, source: string): string {
   return path.join(getSessionsDir(), `${sessionId}.${source}-state.json`);
 }
 
-export function loadState(sessionId: string, source: string): SessionState | null {
+function loadStoredState(sessionId: string, source: string): SessionState | null {
   const statePath = getStatePath(sessionId, source);
   if (!fs.existsSync(statePath)) {
     return null;
@@ -144,6 +146,7 @@ export function loadState(sessionId: string, source: string): SessionState | nul
       source: data.source ?? source,
       cwd: data.cwd,
       createdAt: data.createdAt ?? new Date().toISOString(),
+      endedAt: data.endedAt,
       currentTurnId: data.currentTurnId ?? null,
       currentPromptId: data.currentPromptId ?? null,
       pendingToolCalls: new Map(Object.entries(data.pendingToolCalls ?? {})),
@@ -154,6 +157,11 @@ export function loadState(sessionId: string, source: string): SessionState | nul
   }
 }
 
+export function loadState(sessionId: string, source: string): SessionState | null {
+  const state = loadStoredState(sessionId, source);
+  return state?.endedAt ? null : state;
+}
+
 export function saveState(state: SessionState): void {
   ensureSessionsDir();
   const statePath = getStatePath(state.sessionId, state.source);
@@ -162,6 +170,7 @@ export function saveState(state: SessionState): void {
     source: state.source,
     cwd: state.cwd,
     createdAt: state.createdAt,
+    endedAt: state.endedAt,
     currentTurnId: state.currentTurnId,
     currentPromptId: state.currentPromptId,
     pendingToolCalls: Object.fromEntries(state.pendingToolCalls),
@@ -192,7 +201,7 @@ export function findSessionIdForWorkspace(
   for (const file of fs.readdirSync(sessionsDir).filter((f) => f.endsWith(suffix))) {
     try {
       const data = JSON.parse(fs.readFileSync(path.join(sessionsDir, file), 'utf-8'));
-      if (data.cwd === workspaceRoot || data.repos?.[workspaceRoot]) {
+      if (!data.endedAt && (data.cwd === workspaceRoot || data.repos?.[workspaceRoot])) {
         return data.sessionId;
       }
     } catch {
@@ -517,6 +526,17 @@ function fileAttributions(
           }));
     }
     const endAttr = carryAttribution(curSnap, curAttr, endSnap, agentEdit);
+    const ownership: LineOwnership[] = endAttr.map((a) => ({
+      hash: a.hash,
+      source: a.source,
+      ...(a.sessionId ? { sessionId: a.sessionId } : {}),
+      ...(a.agent ? { agent: a.agent } : {}),
+      ...(a.modelId ? { modelId: a.modelId } : {}),
+      ...(a.turnId ? { turnId: a.turnId } : {}),
+    }));
+    if (self && JSON.stringify(self.lines) === JSON.stringify(ownership)) {
+      continue;
+    }
 
     events.push({
       type: 'line_attribution',
@@ -524,14 +544,7 @@ function fileAttributions(
       sessionId: state.sessionId,
       filePath: f,
       vcsRevision: repo.startRef,
-      lines: endAttr.map((a) => ({
-        hash: a.hash,
-        source: a.source,
-        ...(a.sessionId ? { sessionId: a.sessionId } : {}),
-        ...(a.agent ? { agent: a.agent } : {}),
-        ...(a.modelId ? { modelId: a.modelId } : {}),
-        ...(a.turnId ? { turnId: a.turnId } : {}),
-      })),
+      lines: ownership,
     });
 
     // Agent's own lines (excluding blanks, which carry no identity) for traces.
@@ -705,6 +718,59 @@ export function startSession(
   return state;
 }
 
+/**
+ * Start a new session or checkpoint and resume an existing one. Agent processes
+ * may emit their start hook again after reconnect, resume, or compaction. That
+ * must never replace active state: doing so loses the per-turn ownership needed
+ * to distinguish earlier work from the next edit.
+ */
+export function startOrResumeSession(
+  sessionId: string,
+  source: string,
+  cwd: string,
+  transcriptPath?: string,
+): { state: SessionState; resumed: boolean } {
+  const existing = loadStoredState(sessionId, source);
+  if (!existing) {
+    return { state: startSession(sessionId, source, cwd), resumed: false };
+  }
+
+  existing.cwd = cwd;
+  const cwdRepo = getOrCreateRepoId(cwd);
+  if (cwdRepo) ensureRepoTracked(existing, cwdRepo.gitRoot);
+
+  // Finalize the working state against the transcript that existed before the
+  // resumed process accepts more work. This preserves all previous turn IDs.
+  syncSession(existing, transcriptPath, true);
+
+  existing.endedAt = undefined;
+  writeEvent(sessionId, {
+    type: 'session_resume',
+    timestamp: new Date().toISOString(),
+    sessionId,
+  });
+  let index = loadIndex();
+  for (const repo of Object.values(existing.repos)) {
+    index = indexSession(
+      index,
+      sessionId,
+      repo.repoId,
+      repo.gitRoot,
+      existing.createdAt,
+      true,
+    );
+  }
+  index = resumeSessionIndex(index, sessionId);
+  saveIndex(index);
+
+  // Pending calls belong to the previous process. A new assistant turn keeps
+  // future edits separate while retaining the current prompt link if needed.
+  existing.pendingToolCalls.clear();
+  existing.currentTurnId = null;
+  saveState(existing);
+  return { state: existing, resumed: true };
+}
+
 // Materialize the session in Assert's consistent schema. When the agent provides
 // a native transcript (Claude Code), normalize it — preserving reasoning — so
 // every agent is stored identically; otherwise use our stitched central log
@@ -713,7 +779,21 @@ function resolveSessionFile(state: SessionState, transcriptPath?: string): strin
   const stitched = path.join(getSessionsDir(), `${state.sessionId}.jsonl`);
   if (!transcriptPath || state.source !== 'claude-code') return stitched;
   try {
-    const events = normalizeClaudeTranscript(fs.readFileSync(transcriptPath, 'utf-8'), state.sessionId);
+    const lifecycleEvents = fs
+      .readFileSync(stitched, 'utf-8')
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as SessionEvent)
+      .filter((event) =>
+        ['session_start', 'session_resume', 'session_end'].includes(event.type),
+      );
+    const events = [
+      ...normalizeClaudeTranscript(
+        fs.readFileSync(transcriptPath, 'utf-8'),
+        state.sessionId,
+      ),
+      ...lifecycleEvents,
+    ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     if (!events.length) return stitched;
     const out = path.join(getSessionsDir(), `${state.sessionId}.normalized.jsonl`);
     fs.writeFileSync(out, events.map(serializeSessionEvent).join('\n') + '\n');
@@ -726,6 +806,28 @@ function resolveSessionFile(state: SessionState, transcriptPath?: string): strin
 interface TurnBucket {
   turnId: string;
   lines: string[];
+}
+
+/** Identity of an immutable transcript event, ignoring turn ids that older
+ * normalizers generated differently for the same native message. */
+function immutableEventKey(line: string): string {
+  try {
+    const event = JSON.parse(line) as SessionEvent;
+    switch (event.type) {
+      case 'assistant_reasoning':
+        return `${event.type}\0${event.timestamp}\0${event.text}`;
+      case 'assistant_text':
+        return `${event.type}\0${event.timestamp}\0${event.text}`;
+      case 'tool_call':
+        return `${event.type}\0${event.timestamp}\0${event.toolCallId}`;
+      case 'tool_result':
+        return `${event.type}\0${event.timestamp}\0${event.toolCallId}`;
+      default:
+        return line;
+    }
+  } catch {
+    return line;
+  }
 }
 
 /**
@@ -753,15 +855,27 @@ function splitTranscriptByTurn(transcript: string): TurnBucket[] {
     } catch {
       continue;
     }
+    if (
+      ev.type === 'session_start' ||
+      ev.type === 'session_resume' ||
+      ev.type === 'session_end'
+    ) {
+      continue; // lifecycle events are materialized independently
+    }
     const cur = segs[segs.length - 1];
     if (ev.type === 'human_turn') {
       segs.push({ humanTurnId: ev.turnId, lines: [...leading, raw] });
       leading = [];
+    } else if (ev.type === 'session_resume') {
+      leading.push(raw);
     } else if (ev.type === 'assistant_turn_start') {
-      // The response to the current prompt joins its segment; a second assistant
-      // turn without an intervening prompt starts a new one.
-      if (cur && !cur.assistantTurnId) {
-        cur.assistantTurnId = ev.turnId;
+      // Claude may emit several assistant message blocks for one logical turn.
+      // Repeated starts with the same canonical id stay in the prompt segment.
+      if (
+        cur &&
+        (!cur.assistantTurnId || cur.assistantTurnId === ev.turnId)
+      ) {
+        cur.assistantTurnId ??= ev.turnId;
         cur.lines.push(raw);
       } else {
         segs.push({ assistantTurnId: ev.turnId, lines: [...leading, raw] });
@@ -805,6 +919,23 @@ function syncRepo(
     /* no session file yet */
   }
   const turns = splitTranscriptByTurn(transcript);
+  const lifecycleEvents = transcript
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => {
+      try {
+        return JSON.parse(line) as SessionEvent;
+      } catch {
+        return null;
+      }
+    })
+    .filter(
+      (event): event is SessionEvent =>
+        event != null &&
+        (event.type === 'session_start' ||
+          event.type === 'session_resume' ||
+          event.type === 'session_end'),
+    );
 
   // Attribution for changed files (full current ownership), appended to the
   // latest turn's file so blame reads the newest snapshot per file.
@@ -824,9 +955,9 @@ function syncRepo(
     turns.push({ turnId: turn.turnId ?? state.currentTurnId ?? 'session', lines: orphan });
   }
 
-  // Immutable per-turn files in a per-session dir (`<time>-<id8>/`): each turn is
-  // written once (keyed by turnId), so continuing a session only ADDS files —
-  // never rewrites — which keeps the working tree free of session churn.
+  // Immutable per-turn files in a per-session dir (`<time>-<id8>/`). A logical
+  // turn may gain later assistant blocks, so append only its missing events in
+  // continuation files; existing files are never rewritten.
   const dirName = sessionDirName(state.sessionId, state.createdAt);
   const writeInto = (base: string) => {
     const sdir = path.join(base, dirName);
@@ -836,16 +967,43 @@ function syncRepo(
       const meta = { sessionId: state.sessionId, source: state.source, createdAt: state.createdAt };
       fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
     }
-    const existing = new Set(
-      sessionEventFiles(sdir)
-        .map((f) => /^\d+-(.+)\.jsonl$/.exec(path.basename(f))?.[1])
-        .filter((id): id is string => !!id),
-    );
+    for (const event of lifecycleEvents) {
+      const timestamp = event.timestamp.replace(/\D/g, '');
+      const lifecyclePath = path.join(
+        sdir,
+        `zzzz-${timestamp}-${event.type}.jsonl`,
+      );
+      if (!fs.existsSync(lifecyclePath)) {
+        fs.writeFileSync(lifecyclePath, `${serializeSessionEvent(event)}\n`);
+      }
+    }
+    const existingEventKeys = new Set<string>();
+    let nextFileIndex = 0;
+    for (const file of sessionEventFiles(sdir)) {
+      const match = /^(\d+)-(.+)\.jsonl$/.exec(path.basename(file));
+      if (!match) continue;
+      nextFileIndex = Math.max(nextFileIndex, Number.parseInt(match[1], 10) + 1);
+      for (const line of fs.readFileSync(file, 'utf-8').split('\n')) {
+        if (line.trim()) existingEventKeys.add(immutableEventKey(line));
+      }
+    }
     turns.forEach((t, i) => {
-      if (existing.has(t.turnId)) return; // immutable: already materialized
       const lines = [...t.lines];
       if (i === turns.length - 1) lines.push(...attribution);
-      fs.writeFileSync(path.join(sdir, `${String(i).padStart(4, '0')}-${t.turnId}.jsonl`), `${lines.join('\n')}\n`);
+      const missingLines = lines.filter(
+        (line) => !existingEventKeys.has(immutableEventKey(line)),
+      );
+      if (missingLines.length === 0) return;
+      fs.writeFileSync(
+        path.join(
+          sdir,
+          `${String(nextFileIndex++).padStart(4, '0')}-${t.turnId}.jsonl`,
+        ),
+        `${missingLines.join('\n')}\n`,
+      );
+      for (const line of missingLines) {
+        existingEventKeys.add(immutableEventKey(line));
+      }
     });
   };
 
@@ -881,20 +1039,24 @@ export function endSession(
   reason: 'completed' | 'aborted',
   transcriptPath?: string
 ): void {
+  const endedAt = new Date().toISOString();
   writeEvent(state.sessionId, {
     type: 'session_end',
-    timestamp: new Date().toISOString(),
+    timestamp: endedAt,
     sessionId: state.sessionId,
     reason,
   });
 
   let index = loadIndex();
-  index = endSessionIndex(index, state.sessionId, new Date().toISOString());
+  index = endSessionIndex(index, state.sessionId, endedAt);
   saveIndex(index);
 
   const sessionFile = resolveSessionFile(state, transcriptPath);
   const turn = latestTurn(sessionFile);
   for (const repo of Object.values(state.repos)) syncRepo(state, repo, sessionFile, true, turn);
 
-  clearState(state.sessionId, state.source);
+  state.endedAt = endedAt;
+  state.currentTurnId = null;
+  state.pendingToolCalls.clear();
+  saveState(state);
 }

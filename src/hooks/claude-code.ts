@@ -10,7 +10,7 @@ import {
   type SessionState,
   loadState,
   saveState,
-  startSession,
+  startOrResumeSession,
   endSession,
   syncSession,
   recordFileEdit,
@@ -32,6 +32,7 @@ const SOURCE = 'claude-code';
 interface ClaudeCodeSessionStart {
   session_id: string;
   cwd: string;
+  transcript_path?: string;
 }
 
 interface ClaudeCodeSessionEnd {
@@ -76,8 +77,13 @@ function ensureTurn(state: SessionState): string {
 }
 
 export function handleSessionStart(data: ClaudeCodeSessionStart): void {
-  startSession(data.session_id, SOURCE, data.cwd);
-  console.error(`[assert] Session started: ${data.session_id}`);
+  const { resumed } = startOrResumeSession(
+    data.session_id,
+    SOURCE,
+    data.cwd,
+    data.transcript_path,
+  );
+  console.error(`[assert] Session ${resumed ? 'resumed' : 'started'}: ${data.session_id}`);
 }
 
 export function handleSessionEnd(data: ClaudeCodeSessionEnd): void {

@@ -17,7 +17,7 @@ import {
   type SessionState,
   loadState,
   saveState,
-  startSession,
+  startOrResumeSession,
   syncSession,
   recordFileEdit,
   writeEvent,
@@ -81,12 +81,8 @@ function ensureTurn(state: SessionState, model?: string): string {
 }
 
 export function handleSessionStart(data: CodexSessionStart): void {
-  // `resume` reuses an existing session id; keep its tracked repos and turn.
-  if (loadState(data.session_id, SOURCE)) {
-    return;
-  }
-  startSession(data.session_id, SOURCE, data.cwd);
-  console.error(`[assert] Codex session started: ${data.session_id}`);
+  const { resumed } = startOrResumeSession(data.session_id, SOURCE, data.cwd);
+  console.error(`[assert] Codex session ${resumed ? 'resumed' : 'started'}: ${data.session_id}`);
 }
 
 export function handleUserPromptSubmit(data: CodexUserPromptSubmit): void {

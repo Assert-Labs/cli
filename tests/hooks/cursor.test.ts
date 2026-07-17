@@ -9,7 +9,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import { processHook } from '../../src/hooks/cursor';
-import { loadState, setCaptureDisabled, blameFile } from '../../src/hooks/session-recorder';
+import { loadState, setCaptureDisabled, blameFile, readSessionFile } from '../../src/hooks/session-recorder';
+import { parseSession, getTurn } from '../../src/core';
 import { readRepoEvents } from './session-layout';
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { hashLine } from '../../src/line-attribution';
@@ -87,6 +88,36 @@ describe('cursor hook adapter', () => {
 
     const events = readEvents('s2');
     expect(events.find((e) => e.type === 'human_turn')?.content).toBe('resolved');
+  });
+
+  it('checkpoints ownership before resuming the same session', async () => {
+    await hook('sessionStart', {});
+    await hook('beforeSubmitPrompt', { content: 'create the file' });
+    await hook('preToolUse', { toolName: 'edit_file', filePath: 'feature.ts' });
+    write('feature.ts', 'first line\nsecond line\n');
+
+    // Resume without a stop from the first process.
+    await hook('sessionStart', {});
+
+    await hook('beforeSubmitPrompt', { content: 'edit one line' });
+    await hook('preToolUse', { toolName: 'edit_file', filePath: 'feature.ts' });
+    write('feature.ts', 'first line edited\nsecond line\n');
+    await hook('stop', {});
+
+    const content = fs.readFileSync(path.join(repo, 'feature.ts'), 'utf-8');
+    const byText = new Map(
+      blameFile(repo, 'feature.ts', content)!.map((attribution, index) => [
+        content.split('\n')[index],
+        attribution,
+      ]),
+    );
+    const session = parseSession(readSessionFile(repo, 's1')!);
+    expect(getTurn(session, byText.get('first line edited')!.turnId!)?.prompt?.text).toBe(
+      'edit one line',
+    );
+    expect(getTurn(session, byText.get('second line')!.turnId!)?.prompt?.text).toBe(
+      'create the file',
+    );
   });
 
   it('does not record when capture is disabled', async () => {

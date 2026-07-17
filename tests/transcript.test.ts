@@ -52,4 +52,107 @@ describe('normalizeClaudeTranscript', () => {
     expect(events.find((e) => e.type === 'tool_call')).toMatchObject({ toolCallId: 'tc-1', toolName: 'Edit' });
     expect(events.find((e) => e.type === 'tool_result')).toMatchObject({ toolCallId: 'tc-1', output: 'done' });
   });
+
+  it('uses stable prompt ids when normalizing a growing transcript', () => {
+    const initial = lines.slice(0, 3).map((line) => JSON.stringify(line)).join('\n');
+    const first = normalizeClaudeTranscript(initial, 's1');
+    const second = normalizeClaudeTranscript(
+      `${initial}\n${JSON.stringify({ type: 'assistant', timestamp: 't4', message: { id: 'turn-2', content: [] } })}`,
+      's1',
+    );
+    expect(first.find((event) => event.type === 'human_turn')?.turnId).toBe(
+      second.find((event) => event.type === 'human_turn')?.turnId,
+    );
+  });
+
+  it('uses one logical turn id for assistant blocks answering the same prompt', () => {
+    const transcript = [
+      {
+        type: 'user',
+        timestamp: 't1',
+        message: { role: 'user', content: 'create a file' },
+      },
+      {
+        type: 'assistant',
+        timestamp: 't2',
+        message: {
+          id: 'tool-block',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'write-1',
+              name: 'Write',
+              input: { file_path: 'dummy.txt' },
+            },
+          ],
+        },
+      },
+      {
+        type: 'assistant',
+        timestamp: 't3',
+        message: {
+          id: 'summary-block',
+          content: [{ type: 'text', text: 'Created the file.' }],
+        },
+      },
+    ];
+    const events = normalizeClaudeTranscript(
+      transcript.map((line) => JSON.stringify(line)).join('\n'),
+      's1',
+    );
+    const assistantTurnIds = new Set(
+      events
+        .filter((event) => event.type.startsWith('assistant_') || event.type === 'tool_call')
+        .map((event) => 'turnId' in event && event.turnId),
+    );
+    expect([...assistantTurnIds]).toEqual(['tool-block']);
+  });
+
+  it('uses stable fallback ids for assistant messages without native ids', () => {
+    const transcript = [
+      {
+        type: 'user',
+        timestamp: 't1',
+        message: { role: 'user', content: 'help' },
+      },
+      {
+        type: 'assistant',
+        timestamp: 't2',
+        message: { content: [{ type: 'text', text: 'done' }] },
+      },
+    ]
+      .map((line) => JSON.stringify(line))
+      .join('\n');
+    const first = normalizeClaudeTranscript(transcript, 's1');
+    const second = normalizeClaudeTranscript(transcript, 's1');
+    expect(
+      first.find((event) => event.type === 'assistant_turn_start')?.turnId,
+    ).toBe(second.find((event) => event.type === 'assistant_turn_start')?.turnId);
+  });
+
+  it('keeps repeated metadata-free messages as distinct logical turns', () => {
+    const transcript = [
+      { type: 'user', message: { role: 'user', content: 'repeat' } },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'same' }] },
+      },
+      { type: 'user', message: { role: 'user', content: 'repeat' } },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'same' }] },
+      },
+    ]
+      .map((line) => JSON.stringify(line))
+      .join('\n');
+    const events = normalizeClaudeTranscript(transcript, 's1');
+    const promptIds = events
+      .filter((event) => event.type === 'human_turn')
+      .map((event) => event.turnId);
+    const assistantIds = events
+      .filter((event) => event.type === 'assistant_turn_start')
+      .map((event) => event.turnId);
+    expect(new Set(promptIds).size).toBe(2);
+    expect(new Set(assistantIds).size).toBe(2);
+  });
 });

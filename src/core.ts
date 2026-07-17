@@ -61,6 +61,7 @@ export interface Session {
   source: SessionSource;
   turns: Turn[]; // ordered by start time
   events: SessionEvent[]; // raw stream, for a client that wants the unmodeled log
+  turnAliases?: Record<string, string>; // native assistant id -> logical prompt turn id
 }
 
 /** Parse a session `.jsonl` (transcript, plus attribution when present) into the
@@ -77,6 +78,7 @@ export function parseSession(jsonl: string): Session {
       /* skip malformed lines */
     }
   }
+  events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   let sessionId = '';
   let source: SessionSource = 'unknown';
@@ -84,6 +86,41 @@ export function parseSession(jsonl: string): Session {
   const promptRef = new Map<string, string>(); // assistant turnId -> prompt turnId
   const turns = new Map<string, Turn>();
   const changed = new Set<string>();
+  const turnIdByPrompt = new Map<string, string>();
+  const turnAliases = new Map<string, string>();
+  const promptAliases = new Map<string, string>();
+  const logicalTurnId = (turnId: string) => turnAliases.get(turnId) ?? turnId;
+
+  const promptIdByContent = new Map<string, string>();
+  for (const event of events) {
+    if (event.type !== 'human_turn') continue;
+    const key = `${event.timestamp}\0${event.content}`;
+    const logicalId = promptIdByContent.get(key) ?? event.turnId;
+    promptIdByContent.set(key, logicalId);
+    promptAliases.set(event.turnId, logicalId);
+    if (!prompts.has(logicalId)) {
+      prompts.set(logicalId, {
+        turnId: logicalId,
+        text: event.content,
+        timestamp: event.timestamp,
+      });
+    }
+  }
+
+  // Resolve aliases before consuming child events. Continuation files and
+  // historical captures are independently timestamped, so a child event can
+  // otherwise sort before the assistant-start block that defines its alias.
+  for (const event of events) {
+    if (event.type !== 'assistant_turn_start') continue;
+    const promptId = event.promptTurnId
+      ? (promptAliases.get(event.promptTurnId) ?? event.promptTurnId)
+      : undefined;
+    const logicalId = promptId
+      ? (turnIdByPrompt.get(promptId) ?? event.turnId)
+      : event.turnId;
+    if (promptId) turnIdByPrompt.set(promptId, logicalId);
+    turnAliases.set(event.turnId, logicalId);
+  }
 
   const turn = (turnId: string, at: string): Turn => {
     let t = turns.get(turnId);
@@ -101,31 +138,40 @@ export function parseSession(jsonl: string): Session {
         source = ev.source;
         break;
       case 'human_turn':
-        prompts.set(ev.turnId, { turnId: ev.turnId, text: ev.content, timestamp: ev.timestamp });
         break;
       case 'assistant_turn_start': {
-        const t = turn(ev.turnId, ev.timestamp);
-        t.startedAt = ev.timestamp;
-        t.modelId = ev.model;
-        if (ev.promptTurnId) promptRef.set(ev.turnId, ev.promptTurnId);
+        const logicalId = logicalTurnId(ev.turnId);
+        const t = turn(logicalId, ev.timestamp);
+        if (ev.timestamp < t.startedAt) t.startedAt = ev.timestamp;
+        if (ev.model) t.modelId = ev.model;
+        if (ev.promptTurnId) {
+          promptRef.set(
+            logicalId,
+            promptAliases.get(ev.promptTurnId) ?? ev.promptTurnId,
+          );
+        }
         break;
       }
       case 'assistant_reasoning':
-        turn(ev.turnId, ev.timestamp).reasoning.push({ text: ev.text, timestamp: ev.timestamp });
+        turn(logicalTurnId(ev.turnId), ev.timestamp).reasoning.push({ text: ev.text, timestamp: ev.timestamp });
         break;
       case 'assistant_text':
-        turn(ev.turnId, ev.timestamp).text.push(ev.text);
+        turn(logicalTurnId(ev.turnId), ev.timestamp).text.push(ev.text);
         break;
-      case 'tool_call':
-        turn(ev.turnId, ev.timestamp).toolCalls.push({
-          toolCallId: ev.toolCallId,
-          name: ev.toolName,
-          input: ev.input,
-          timestamp: ev.timestamp,
-        });
+      case 'tool_call': {
+        const t = turn(logicalTurnId(ev.turnId), ev.timestamp);
+        if (!t.toolCalls.some((call) => call.toolCallId === ev.toolCallId)) {
+          t.toolCalls.push({
+            toolCallId: ev.toolCallId,
+            name: ev.toolName,
+            input: ev.input,
+            timestamp: ev.timestamp,
+          });
+        }
         break;
+      }
       case 'tool_result': {
-        const tc = turns.get(ev.turnId)?.toolCalls.find((c) => c.toolCallId === ev.toolCallId);
+        const tc = turns.get(logicalTurnId(ev.turnId))?.toolCalls.find((c) => c.toolCallId === ev.toolCallId);
         if (tc) {
           tc.output = ev.output;
           tc.error = ev.error;
@@ -133,7 +179,7 @@ export function parseSession(jsonl: string): Session {
         break;
       }
       case 'line_attribution':
-        for (const l of ev.lines) if (l.turnId) changed.add(l.turnId);
+        for (const l of ev.lines) if (l.turnId) changed.add(logicalTurnId(l.turnId));
         break;
     }
   }
@@ -152,11 +198,18 @@ export function parseSession(jsonl: string): Session {
   const ordered = [...turns.values()].sort((a, b) =>
     a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0,
   );
-  return { sessionId, source, turns: ordered, events };
+  return {
+    sessionId,
+    source,
+    turns: ordered,
+    events,
+    turnAliases: Object.fromEntries(turnAliases),
+  };
 }
 
 export function getTurn(session: Session, turnId: string): Turn | undefined {
-  return session.turns.find((t) => t.turnId === turnId);
+  const logicalId = session.turnAliases?.[turnId] ?? turnId;
+  return session.turns.find((t) => t.turnId === logicalId);
 }
 
 export function promptForLine(line: BlameLine, session: Session): Prompt | undefined {
@@ -176,7 +229,8 @@ export function turnContext(
   opts: { maxTurns?: number } = {},
 ): Turn[] {
   const max = opts.maxTurns ?? Infinity;
-  const idx = session.turns.findIndex((t) => t.turnId === turnId);
+  const logicalId = session.turnAliases?.[turnId] ?? turnId;
+  const idx = session.turns.findIndex((t) => t.turnId === logicalId);
   if (idx < 0) return [];
   const chain: Turn[] = [session.turns[idx]];
   for (let i = idx - 1; i >= 0 && chain.length < max; i--) {
@@ -198,9 +252,10 @@ export function diffProvenance(blame: BlameLine[], session: Session): DiffProven
   const byTurn = new Map<string, number[]>();
   for (const l of blame) {
     if (l.source !== 'agent' || !l.turnId) continue;
-    const lines = byTurn.get(l.turnId) ?? [];
+    const turnId = session.turnAliases?.[l.turnId] ?? l.turnId;
+    const lines = byTurn.get(turnId) ?? [];
     lines.push(l.line);
-    byTurn.set(l.turnId, lines);
+    byTurn.set(turnId, lines);
   }
   const out: DiffProvenance[] = [];
   for (const [turnId, lines] of byTurn) {
@@ -210,12 +265,23 @@ export function diffProvenance(blame: BlameLine[], session: Session): DiffProven
   return out;
 }
 
-export function linesForTurn(blame: BlameLine[], turnId: string): BlameLine[] {
-  return blame.filter((l) => l.turnId === turnId);
+export function linesForTurn(
+  blame: BlameLine[],
+  turnId: string,
+  session?: Session,
+): BlameLine[] {
+  const logicalId = session?.turnAliases?.[turnId] ?? turnId;
+  return blame.filter(
+    (line) =>
+      line.turnId != null &&
+      (session?.turnAliases?.[line.turnId] ?? line.turnId) === logicalId,
+  );
 }
 
 export function turnsForFile(blame: BlameLine[], session: Session): Turn[] {
   const ids = new Set<string>();
-  for (const l of blame) if (l.turnId) ids.add(l.turnId);
+  for (const l of blame) {
+    if (l.turnId) ids.add(session.turnAliases?.[l.turnId] ?? l.turnId);
+  }
   return [...ids].map((id) => getTurn(session, id)).filter((t): t is Turn => !!t);
 }

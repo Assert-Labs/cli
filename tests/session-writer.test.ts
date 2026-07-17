@@ -12,10 +12,12 @@ import {
   ensureSessionsDir,
   sessionDirName,
   listSessionDirs,
+  sessionEventFiles,
 } from '../src/session-writer';
 import type {
   SessionStartEvent,
   SessionEndEvent,
+  SessionResumeEvent,
   HumanTurnEvent,
   ToolCallEvent,
   ToolResultEvent,
@@ -28,6 +30,22 @@ describe('session-writer', () => {
   beforeEach(() => {
     // Create a temp directory for each test
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assert-test-'));
+  });
+
+  it('orders immutable event files by their first event timestamp', () => {
+    const sessionDir = path.join(testDir, 'ordered-session');
+    fs.mkdirSync(sessionDir);
+    fs.writeFileSync(
+      path.join(sessionDir, '0000-turn.jsonl'),
+      `${JSON.stringify({ type: 'assistant_text', timestamp: 't2' })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(sessionDir, 'zzzz-session-start.jsonl'),
+      `${JSON.stringify({ type: 'session_start', timestamp: 't1' })}\n`,
+    );
+    expect(sessionEventFiles(sessionDir).map((file) => path.basename(file))).toEqual(
+      ['zzzz-session-start.jsonl', '0000-turn.jsonl'],
+    );
   });
 
   afterEach(() => {
@@ -271,6 +289,63 @@ describe('session-writer', () => {
         } as SessionEndEvent,
       ];
       expect(isSessionActive(events)).toBe(false);
+    });
+
+    it('returns true when the session resumes after an end event', () => {
+      const events = [
+        {
+          type: 'session_start',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          sessionId: 'test',
+          source: 'cursor',
+          cwd: '/test',
+        } as SessionStartEvent,
+        {
+          type: 'session_end',
+          timestamp: '2024-01-01T00:00:01.000Z',
+          sessionId: 'test',
+          reason: 'completed',
+        } as SessionEndEvent,
+        {
+          type: 'session_resume',
+          timestamp: '2024-01-01T00:00:02.000Z',
+          sessionId: 'test',
+        } as SessionResumeEvent,
+      ];
+      expect(isSessionActive(events)).toBe(true);
+    });
+
+    it('uses the latest end after a resumed session ends again', () => {
+      const events = [
+        {
+          type: 'session_start',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          sessionId: 'test',
+          source: 'cursor',
+          cwd: '/test',
+        } as SessionStartEvent,
+        {
+          type: 'session_end',
+          timestamp: '2024-01-01T00:00:01.000Z',
+          sessionId: 'test',
+          reason: 'completed',
+        } as SessionEndEvent,
+        {
+          type: 'session_resume',
+          timestamp: '2024-01-01T00:00:02.000Z',
+          sessionId: 'test',
+        } as SessionResumeEvent,
+        {
+          type: 'session_end',
+          timestamp: '2024-01-01T00:00:03.000Z',
+          sessionId: 'test',
+          reason: 'completed',
+        } as SessionEndEvent,
+      ];
+      expect(isSessionActive(events)).toBe(false);
+      expect(extractSessionMetadata(events)?.endTime).toBe(
+        '2024-01-01T00:00:03.000Z',
+      );
     });
   });
 

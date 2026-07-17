@@ -88,4 +88,94 @@ describe('core', () => {
     expect(linesForTurn(blame, 'a2').map((l) => l.line)).toEqual([1, 2]);
     expect(turnsForFile(blame, session).map((t) => t.turnId)).toEqual(['a2']);
   });
+
+  it('merges historical assistant message ids that answer the same prompt', () => {
+    const session = parseSession(
+      [
+        {
+          type: 'human_turn',
+          timestamp: 't1',
+          sessionId: 's1',
+          turnId: 'p1',
+          content: 'create a file',
+        },
+        {
+          type: 'assistant_turn_start',
+          timestamp: 't2',
+          sessionId: 's1',
+          turnId: 'tool-block',
+          promptTurnId: 'p1',
+          model: 'real-model',
+        },
+        {
+          type: 'tool_call',
+          timestamp: 't2',
+          sessionId: 's1',
+          turnId: 'tool-block',
+          toolCallId: 'write-1',
+          toolName: 'Write',
+          input: { file_path: 'dummy.txt' },
+        },
+        {
+          type: 'human_turn',
+          timestamp: 't1',
+          sessionId: 's1',
+          turnId: 'p1-new-normalizer',
+          content: 'create a file',
+        },
+        {
+          type: 'assistant_turn_start',
+          timestamp: 't3',
+          sessionId: 's1',
+          turnId: 'summary-block',
+          promptTurnId: 'p1-new-normalizer',
+        },
+        {
+          type: 'assistant_text',
+          timestamp: 't3',
+          sessionId: 's1',
+          turnId: 'summary-block',
+          text: 'Created the file.',
+        },
+        {
+          type: 'line_attribution',
+          timestamp: 't4',
+          sessionId: 's1',
+          filePath: 'dummy.txt',
+          lines: [
+            {
+              hash: 'h1',
+              source: 'agent',
+              sessionId: 's1',
+              turnId: 'tool-block',
+            },
+          ],
+        },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join('\n'),
+    );
+
+    expect(session.turns).toHaveLength(1);
+    expect(session.turns[0]).toMatchObject({
+      turnId: 'tool-block',
+      prompt: { text: 'create a file' },
+      text: ['Created the file.'],
+      changedCode: true,
+      modelId: 'real-model',
+    });
+    expect(session.turns[0].toolCalls).toHaveLength(1);
+    expect(session.turns[0].text).toEqual(['Created the file.']);
+    expect(getTurn(session, 'summary-block')).toBe(session.turns[0]);
+    expect(
+      linesForTurn(
+        [
+          { line: 1, content: 'a', source: 'agent', turnId: 'tool-block' },
+          { line: 2, content: 'b', source: 'agent', turnId: 'summary-block' },
+        ],
+        'tool-block',
+        session,
+      ),
+    ).toHaveLength(2);
+  });
 });

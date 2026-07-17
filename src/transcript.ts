@@ -4,7 +4,8 @@
  * stored in one schema and translated (e.g. to agent-trace) on demand.
  */
 
-import { type SessionEvent, createTurnId } from './schema';
+import { type SessionEvent } from './schema';
+import { createHash } from 'crypto';
 
 /** Normalize a raw model string to the models.dev convention (provider/model). */
 export function normalizeModelId(raw?: string): string | undefined {
@@ -34,8 +35,9 @@ export function normalizeClaudeTranscript(jsonl: string, sessionId: string): Ses
   const events: SessionEvent[] = [];
   let turnId = '';
   let lastPromptId = ''; // human_turn preceding the current assistant turn
+  const turnIdByPrompt = new Map<string, string>();
 
-  for (const line of jsonl.split('\n')) {
+  for (const [sourceIndex, line] of jsonl.split('\n').entries()) {
     if (!line.trim()) continue;
     let o: any;
     try {
@@ -56,12 +58,29 @@ export function normalizeClaudeTranscript(jsonl: string, sessionId: string): Ses
       } else {
         const text = asText(content);
         if (text) {
-          lastPromptId = createTurnId();
+          lastPromptId =
+            o.uuid ||
+            `prompt-${createHash('sha256')
+              .update(`${sessionId}\0${sourceIndex}\0${timestamp}\0${text}`)
+              .digest('hex')
+              .slice(0, 16)}`;
           events.push({ type: 'human_turn', timestamp, sessionId, turnId: lastPromptId, content: text });
         }
       }
     } else if (o.type === 'assistant' && msg) {
-      turnId = msg.id || o.uuid || createTurnId();
+      const nativeTurnId =
+        msg.id ||
+        o.uuid ||
+        `assistant-${createHash('sha256')
+          .update(
+            `${sessionId}\0${sourceIndex}\0${timestamp}\0${JSON.stringify(msg.content ?? [])}`,
+          )
+          .digest('hex')
+          .slice(0, 16)}`;
+      turnId = lastPromptId
+        ? (turnIdByPrompt.get(lastPromptId) ?? nativeTurnId)
+        : nativeTurnId;
+      if (lastPromptId) turnIdByPrompt.set(lastPromptId, turnId);
       const model = normalizeModelId(msg.model);
       events.push({ type: 'assistant_turn_start', timestamp, sessionId, turnId, model, promptTurnId: lastPromptId || undefined });
       for (const b of Array.isArray(msg.content) ? msg.content : []) {

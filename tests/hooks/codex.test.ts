@@ -146,6 +146,44 @@ describe('codex hook adapter', () => {
     expect(bySource.get('line two')?.source).toBe('agent');
   });
 
+  it('checkpoints ownership before resuming the same session', async () => {
+    await hook('SessionStart', {});
+    await hook('UserPromptSubmit', { prompt: 'create the file' });
+    await hook('PreToolUse', {
+      tool_name: 'apply_patch',
+      tool_input: { file_path: 'feature.ts' },
+      model: 'gpt-5-codex',
+    });
+    write('feature.ts', 'first line\nsecond line\n');
+
+    // Resume without a stop from the first process.
+    await hook('SessionStart', { source: 'resume' });
+
+    await hook('UserPromptSubmit', { prompt: 'edit one line' });
+    await hook('PreToolUse', {
+      tool_name: 'apply_patch',
+      tool_input: { file_path: 'feature.ts' },
+      model: 'gpt-5-codex',
+    });
+    write('feature.ts', 'first line edited\nsecond line\n');
+    await hook('Stop', { last_assistant_message: 'Done.' });
+
+    const content = fs.readFileSync(path.join(repo, 'feature.ts'), 'utf-8');
+    const byText = new Map(
+      blameFile(repo, 'feature.ts', content)!.map((attribution, index) => [
+        content.split('\n')[index],
+        attribution,
+      ]),
+    );
+    const session = parseSession(readSessionFile(repo, 's1')!);
+    expect(getTurn(session, byText.get('first line edited')!.turnId!)?.prompt?.text).toBe(
+      'edit one line',
+    );
+    expect(getTurn(session, byText.get('second line')!.turnId!)?.prompt?.text).toBe(
+      'create the file',
+    );
+  });
+
   it('ignores hooks for an unknown session', async () => {
     await processHook(
       'PreToolUse',

@@ -118,7 +118,7 @@ export function readSessionEvents(
       if (line.trim()) events.push(parseSessionEvent(line));
     }
   }
-  return events;
+  return events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
 /** Session dir name: sortable ISO timestamp + short session id (no rename ever). */
@@ -151,11 +151,25 @@ export function listSessionDirs(baseDir: string): { sessionId: string; dir: stri
 /** The `.jsonl` files in a session dir, in turn order. */
 export function sessionEventFiles(sessionDir: string): string[] {
   try {
-    return fs
+    const files = fs
       .readdirSync(sessionDir)
       .filter((f) => f.endsWith('.jsonl'))
-      .sort()
       .map((f) => path.join(sessionDir, f));
+    const firstTimestamp = (file: string) => {
+      try {
+        for (const line of fs.readFileSync(file, 'utf-8').split('\n')) {
+          if (!line.trim()) continue;
+          return (JSON.parse(line) as { timestamp?: string }).timestamp ?? '';
+        }
+      } catch {
+        /* malformed files sort by name */
+      }
+      return '';
+    };
+    return files.sort((a, b) => {
+      const byTimestamp = firstTimestamp(a).localeCompare(firstTimestamp(b));
+      return byTimestamp || a.localeCompare(b);
+    });
   } catch {
     return [];
   }
@@ -192,9 +206,7 @@ export function extractSessionMetadata(
     return null;
   }
 
-  const endEvent = events.find(
-    (e): e is SessionEndEvent => e.type === 'session_end'
-  );
+  let endEvent: SessionEndEvent | undefined;
 
   const branches = new Set<string>();
   const filesModified = new Set<string>();
@@ -205,6 +217,13 @@ export function extractSessionMetadata(
     switch (event.type) {
       case 'session_start':
         if (event.gitBranch) branches.add(event.gitBranch);
+        endEvent = undefined;
+        break;
+      case 'session_resume':
+        endEvent = undefined;
+        break;
+      case 'session_end':
+        endEvent = event;
         break;
       case 'branch_switch':
         branches.add(event.toBranch);
@@ -238,11 +257,17 @@ export function extractSessionMetadata(
   };
 }
 
-/**
- * Check if a session is still active (no end event)
- */
+/** Check whether the latest lifecycle event leaves the session active. */
 export function isSessionActive(events: SessionEvent[]): boolean {
-  return !events.some((e) => e.type === 'session_end');
+  let active = false;
+  for (const event of events) {
+    if (event.type === 'session_start' || event.type === 'session_resume') {
+      active = true;
+    } else if (event.type === 'session_end') {
+      active = false;
+    }
+  }
+  return active;
 }
 
 /**

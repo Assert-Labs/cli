@@ -31,6 +31,10 @@ export interface SessionEndEvent extends BaseEvent {
   error?: string;
 }
 
+export interface SessionResumeEvent extends BaseEvent {
+  type: 'session_resume';
+}
+
 // === Turn Events ===
 // Human messages and assistant responses
 
@@ -145,6 +149,7 @@ export interface LineAttributionEvent extends BaseEvent {
 export type SessionEvent =
   | SessionStartEvent
   | SessionEndEvent
+  | SessionResumeEvent
   | HumanTurnEvent
   | AssistantTurnStartEvent
   | AssistantTextEvent
