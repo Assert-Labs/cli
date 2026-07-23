@@ -35,6 +35,7 @@ export interface AttributionRecord {
   sessionId?: string;
   agent?: SessionSource;
   modelId?: string;
+  provider?: string;
   turnId?: string;
   timestamp: string;
 }
@@ -174,6 +175,7 @@ export interface EditSource {
   sessionId?: string;
   agent?: SessionSource;
   modelId?: string;
+  provider?: string;
   turnId?: string;
   timestamp: string;
 }
@@ -212,6 +214,7 @@ export function carryAttribution(
           sessionId: edit.sessionId,
           agent: edit.agent,
           modelId: edit.modelId,
+          provider: edit.provider,
           turnId: edit.turnId,
           timestamp: edit.timestamp,
         };

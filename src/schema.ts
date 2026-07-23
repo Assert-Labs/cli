@@ -48,6 +48,7 @@ export interface AssistantTurnStartEvent extends BaseEvent {
   type: 'assistant_turn_start';
   turnId: string;
   model?: string;
+  provider?: string; // provider that served the model (e.g. multi-provider tools)
   promptTurnId?: string; // human_turn this assistant turn is responding to
 }
 
@@ -123,7 +124,12 @@ export interface AttributionEvent extends BaseEvent {
   filePath: string;
   vcsRevision?: string;
   operation: 'create' | 'modify' | 'delete';
-  contributor: { type: 'ai' | 'human' | 'unknown'; agent?: SessionSource; modelId?: string };
+  contributor: {
+    type: 'ai' | 'human' | 'unknown';
+    agent?: SessionSource;
+    modelId?: string;
+    provider?: string;
+  };
   lineHashes: string[];
 }
 
@@ -135,6 +141,7 @@ export interface LineOwnership {
   sessionId?: string;
   agent?: SessionSource;
   modelId?: string;
+  provider?: string;
   turnId?: string; // assistant turn that wrote the line; links to its prompt/reasoning
 }
 export interface LineAttributionEvent extends BaseEvent {
@@ -164,7 +171,7 @@ export type SessionEvent =
 
 // === Supporting Types ===
 
-export type SessionSource = 'cursor' | 'claude-code' | 'codex' | 'unknown';
+export type SessionSource = 'cursor' | 'claude-code' | 'codex' | 'opencode' | 'unknown';
 
 export interface LineRange {
   startLine: number; // 1-indexed

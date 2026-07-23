@@ -13,8 +13,11 @@ import {
   codexSkillDir,
   codexCliCandidates,
   codexHookTrustHash,
+  openCodePluginDir,
+  openCodePluginPath,
   generateClaudeCodePlugin,
   generateCursorPlugin,
+  generateOpenCodePlugin,
   upsertCodexConfigHooks,
   skillMd,
 } from '../src/plugins';
@@ -46,6 +49,9 @@ describe('plugins', () => {
     expect(skill).toContain('Do **not** invoke redaction for');
     expect(skill).toContain('rare fallback');
     expect(skill).toContain('Do not proactively scan every turn');
+    // Frames capture as low-key background bookkeeping, not a task concern.
+    expect(skill.toLowerCase()).toContain('background');
+    expect(skill.toLowerCase()).toContain('routine bookkeeping');
   });
 
   it('Claude Code plugin gates version-specific events', () => {
@@ -177,6 +183,37 @@ describe('plugins', () => {
 
     // Stable: a second pass is a no-op.
     expect(upsertCodexConfigHooks(out, bin, cfg)).toBe(out);
+  });
+
+  it('installs the OpenCode plugin under the auto-loaded plugins/ directory', () => {
+    expect(openCodePluginDir('/home/u')).toBe('/home/u/.config/opencode/plugins');
+    expect(openCodePluginPath('/home/u')).toBe('/home/u/.config/opencode/plugins/assert.ts');
+  });
+
+  it('OpenCode plugin forwards each callback to `assert hook opencode`', () => {
+    const bin = '/home/u/.assert/bin/assert';
+    const src = generateOpenCodePlugin('1.2.3', bin);
+    // The absolute binary path is baked in (the module runs inside OpenCode,
+    // where $HOME is not shell-expanded), and the CLI subcommand is fixed.
+    expect(src).toContain(`const ASSERT_BIN = ${JSON.stringify(bin)}`);
+    expect(src).toContain('"hook", "opencode", event');
+    expect(src).toContain('v1.2.3');
+    // Maps OpenCode's plugin surface to the adapter's events.
+    for (const evt of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'AssistantText', 'Stop', 'SessionEnd']) {
+      expect(src).toContain(`"${evt}"`);
+    }
+    for (const cb of ['event:', '"chat.message"', '"tool.execute.before"', '"tool.execute.after"', '"experimental.text.complete"']) {
+      expect(src).toContain(cb);
+    }
+    // Exports both a named and default plugin so OpenCode loads it either way.
+    expect(src).toContain('export const AssertPlugin');
+    expect(src).toContain('export default AssertPlugin');
+    // Carries the provider (OpenCode is multi-provider) alongside the model.
+    expect(src).toContain('providerID');
+    expect(src).toContain('provider');
+    // Dedupes SessionStart — OpenCode's event bus can deliver session.created twice.
+    expect(src).toContain('started.has(sid)');
+    expect(src).toContain('started.add(sid)');
   });
 
   it('probes PATH, the desktop app, and CODEX_CLI_PATH for the Codex CLI', () => {

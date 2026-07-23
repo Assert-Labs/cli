@@ -27,9 +27,12 @@ import {
   cursorPluginDir,
   codexConfigPath,
   codexSkillDir,
+  openCodePluginDir,
+  openCodePluginPath,
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
+  generateOpenCodePlugin,
   upsertCodexConfigHooks,
   findCodexCli,
   detectCodexCliVersion,
@@ -110,6 +113,11 @@ function detectInstalledAgents(): string[] {
   // Codex: check for .codex directory
   if (fs.existsSync(path.join(home, '.codex'))) {
     detected.push('codex');
+  }
+
+  // OpenCode: check for its global config directory (~/.config/opencode)
+  if (fs.existsSync(path.join(home, '.config', 'opencode'))) {
+    detected.push('opencode');
   }
 
   return detected;
@@ -199,6 +207,14 @@ function installCodexPlugin(home: string): void {
         'capture runs only with a modern Codex CLI or the Codex app.',
     );
   }
+}
+
+function installOpenCodePlugin(home: string): void {
+  const assertBin = path.join(home, '.assert', 'bin', 'assert');
+  const dir = openCodePluginDir(home);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(openCodePluginPath(home), generateOpenCodePlugin(VERSION, assertBin));
+  log('✓ OpenCode');
 }
 
 /**
@@ -314,7 +330,7 @@ async function cmdInit(agent?: string): Promise<void> {
 
   // Detect installed agents
   const detectedAgents = detectInstalledAgents();
-  const supportedAgents = ['claude-code', 'cursor', 'codex'];
+  const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode'];
 
   // Filter to requested agent or all detected+supported
   let agentsToInstall: string[];
@@ -343,6 +359,8 @@ async function cmdInit(agent?: string): Promise<void> {
       installCursorPlugin(home);
     } else if (a === 'codex') {
       installCodexPlugin(home);
+    } else if (a === 'opencode') {
+      installOpenCodePlugin(home);
     }
   }
 
@@ -351,7 +369,7 @@ async function cmdInit(agent?: string): Promise<void> {
 }
 
 async function cmdHook(agent: string, hookType: string): Promise<void> {
-  const validAgents = ['claude-code', 'cursor', 'codex'];
+  const validAgents = ['claude-code', 'cursor', 'codex', 'opencode'];
   if (!validAgents.includes(agent)) {
     error(`Unknown agent: ${agent}`);
     process.exit(1);
@@ -662,6 +680,7 @@ export function blameLineRecord(
   if (attr?.source === 'agent') {
     if (attr.agent) rec.agent = attr.agent;
     if (attr.modelId) rec.modelId = attr.modelId;
+    if (attr.provider) rec.provider = attr.provider;
     if (attr.sessionId) rec.sessionId = attr.sessionId;
     if (attr.turnId) rec.turnId = attr.turnId;
   }
@@ -785,6 +804,7 @@ export function parseUnifiedDiffAddedLines(diff: string): DiffAddedLine[] {
 interface HashOwner {
   agent?: SessionSource;
   modelId?: string;
+  provider?: string;
   sessionId?: string;
   turnId?: string;
   timestamp: string;
@@ -814,6 +834,7 @@ export function buildAgentHashIndex(sessionContents: string[]): Map<string, Hash
         map.set(l.hash, {
           agent: l.agent,
           modelId: l.modelId,
+          provider: l.provider,
           sessionId: ev.sessionId,
           turnId: l.turnId,
           timestamp: ev.timestamp,
@@ -840,6 +861,7 @@ interface DiffLineRecord {
   source: 'agent' | 'unknown';
   agent?: SessionSource;
   modelId?: string;
+  provider?: string;
   sessionId?: string;
   turnId?: string;
 }
@@ -899,6 +921,7 @@ async function cmdBlameDiff(
     if (owner) {
       if (owner.agent) rec.agent = owner.agent;
       if (owner.modelId) rec.modelId = owner.modelId;
+      if (owner.provider) rec.provider = owner.provider;
       if (owner.sessionId) rec.sessionId = owner.sessionId;
       if (owner.turnId) rec.turnId = owner.turnId;
     }
@@ -1070,6 +1093,7 @@ Supported agents:
   claude-code     Claude Code CLI
   cursor          Cursor IDE
   codex           OpenAI Codex CLI
+  opencode        OpenCode
 
 Examples:
   assert init                    # Initialize hooks for all agents

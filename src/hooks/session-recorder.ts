@@ -313,8 +313,8 @@ function ensureSessionsReadme(base: string): void {
 
 /** The session's most recent assistant turn (id + model) — what new lines this
  * sync are attributed to. */
-function latestTurn(sessionFile: string): { turnId?: string; model?: string } {
-  const turn: { turnId?: string; model?: string } = {};
+function latestTurn(sessionFile: string): { turnId?: string; model?: string; provider?: string } {
+  const turn: { turnId?: string; model?: string; provider?: string } = {};
   try {
     for (const line of fs.readFileSync(sessionFile, 'utf-8').split('\n')) {
       if (!line.trim()) continue;
@@ -322,6 +322,7 @@ function latestTurn(sessionFile: string): { turnId?: string; model?: string } {
       if (o.type === 'assistant_turn_start') {
         if (o.turnId) turn.turnId = o.turnId;
         if (o.model) turn.model = o.model;
+        if (o.provider) turn.provider = o.provider;
       }
     }
   } catch {
@@ -353,6 +354,7 @@ function attributionFromOwnership(lines: LineOwnership[]): AttributionRecord[] {
     sessionId: l.sessionId,
     agent: l.agent,
     modelId: l.modelId,
+    provider: l.provider,
     turnId: l.turnId,
     timestamp: '',
   }));
@@ -569,7 +571,7 @@ function fileAttributions(
   repo: TouchedRepo,
   changed: string[],
   baseline: Map<string, string>,
-  turn: { turnId?: string; model?: string },
+  turn: { turnId?: string; model?: string; provider?: string },
 ): SessionEvent[] {
   const events: SessionEvent[] = [];
   const timestamp = new Date().toISOString();
@@ -578,6 +580,7 @@ function fileAttributions(
     sessionId: state.sessionId,
     agent: state.source as SessionStartEvent['source'],
     modelId: turn.model,
+    provider: turn.provider,
     turnId: turn.turnId,
     timestamp,
   };
@@ -625,6 +628,7 @@ function fileAttributions(
       ...(a.sessionId ? { sessionId: a.sessionId } : {}),
       ...(a.agent ? { agent: a.agent } : {}),
       ...(a.modelId ? { modelId: a.modelId } : {}),
+      ...(a.provider ? { provider: a.provider } : {}),
       ...(a.turnId ? { turnId: a.turnId } : {}),
     }));
     if (self && JSON.stringify(self.lines) === JSON.stringify(ownership)) {
@@ -656,7 +660,12 @@ function fileAttributions(
         filePath: f,
         vcsRevision: repo.startRef,
         operation: baseContent ? 'modify' : 'create',
-        contributor: { type: 'ai', agent: state.source as SessionStartEvent['source'], modelId: turn.model },
+        contributor: {
+          type: 'ai',
+          agent: state.source as SessionStartEvent['source'],
+          modelId: turn.model,
+          ...(turn.provider ? { provider: turn.provider } : {}),
+        },
         lineHashes: aiHashes,
       });
     }

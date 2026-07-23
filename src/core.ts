@@ -20,6 +20,7 @@ export interface BlameLine {
   turnId?: string;
   agent?: SessionSource;
   modelId?: string;
+  provider?: string;
 }
 
 export interface Prompt {
@@ -51,6 +52,7 @@ export interface Turn {
   text: string[]; // assistant message segments
   toolCalls: ToolCall[];
   modelId?: string;
+  provider?: string;
   agent?: SessionSource;
   startedAt: string;
   changedCode: boolean; // authored ≥1 surviving line (powers turnContext)
@@ -144,6 +146,7 @@ export function parseSession(jsonl: string): Session {
         const t = turn(logicalId, ev.timestamp);
         if (ev.timestamp < t.startedAt) t.startedAt = ev.timestamp;
         if (ev.model) t.modelId = ev.model;
+        if (ev.provider) t.provider = ev.provider;
         if (ev.promptTurnId) {
           promptRef.set(
             logicalId,
