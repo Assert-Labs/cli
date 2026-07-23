@@ -1,0 +1,80 @@
+src/hooks/session-recorder.ts
+  s_28bef4aabb95e1::t_7280ff2106d495 631
+  s_28bef4aabb95e1::t_46a9dd48efe2e0 316-317,325
+  s_28bef4aabb95e1::t_52fb0f6032afd4 663-668
+  s_28bef4aabb95e1::t_2cfd67af054418 574,583
+  s_28bef4aabb95e1::t_960da4b2fc3ee3 357
+package.json
+  s_28bef4aabb95e1::t_f227de3002efcb 3
+src/line-attribution.ts
+  s_28bef4aabb95e1::t_62610322e1d7b2 178
+  s_28bef4aabb95e1::t_a4cab8d2d9cfab 38
+  s_28bef4aabb95e1::t_f501c03feaca8e 217
+src/cli.ts
+  s_28bef4aabb95e1::t_093230839acb91 118-122
+  s_28bef4aabb95e1::t_89255c60f32104 864
+  s_28bef4aabb95e1::t_a504f2301701f0 333
+  s_28bef4aabb95e1::t_69dd31d185ef78 212-219
+  s_28bef4aabb95e1::t_813d8fbbc7c6dd 1096
+  s_28bef4aabb95e1::t_c11604da9badd2 683
+  s_28bef4aabb95e1::t_0dd97f28d02801 807
+  s_28bef4aabb95e1::t_6bf54d88a3f8a2 362-363
+  s_28bef4aabb95e1::t_6f006032accb70 372
+  s_28bef4aabb95e1::t_6ea750f67c37b7 924
+  s_28bef4aabb95e1::t_04b473ce9d9a84 837
+  s_28bef4aabb95e1::t_005f468db7b1a3 30-31,35
+src/schema.ts
+  s_28bef4aabb95e1::t_dbf49e479de221 127-132
+  s_28bef4aabb95e1::t_08b430816d287e 51
+  s_28bef4aabb95e1::t_acdba4d8e71b74 144
+  s_28bef4aabb95e1::t_f34d81330406af 174
+src/hooks/index.ts
+  s_28bef4aabb95e1::t_10be988b70c491 10,12
+  s_28bef4aabb95e1::t_9b501b9228a52e 32-34
+tests/hooks/opencode.test.ts
+  s_28bef4aabb95e1::t_6fa16da65837cb 94-133
+  s_28bef4aabb95e1::t_430c8edc75fb3c 14
+  s_28bef4aabb95e1::t_cc7dc23f45fdc9 134-166
+  s_28bef4aabb95e1::t_b092ae424c4804 248
+  s_28bef4aabb95e1::t_f5b7b4c2376340 1-13,15-93,167-247,249-270
+src/plugins.ts
+  s_28bef4aabb95e1::t_313a043bfd5ee3 397-400,415-416,433-440,444,451-452,457,465-466,473,478-479
+  s_28bef4aabb95e1::t_d51dab0e08394f 401-403,409-412,421
+  s_28bef4aabb95e1::t_3db8ec702aff8b 354-396,404-408,413-414,417-420,422-432,441-443,445-450,453-456,458-464,467-472,474-477,480-488
+  s_28bef4aabb95e1::t_8add95cfa2fc66 31-40
+  s_28bef4aabb95e1::t_ce2f2d8bccfdfb 117-122
+src/hooks/opencode.ts
+  s_28bef4aabb95e1::t_10a4e2a9f624a9 123,132
+  s_28bef4aabb95e1::t_c22f079b74d86d 173
+  s_28bef4aabb95e1::t_a7af0e8ff92f81 79-116
+  s_28bef4aabb95e1::t_ea88f6e2f2a9d8 52
+  s_28bef4aabb95e1::t_705fcc1b75eb4f 206,209,213
+  s_28bef4aabb95e1::t_77578e53963467 238
+  s_28bef4aabb95e1::t_27875204e16c73 1-51,53-78,117-122,124-131,133-172,174-205,207-208,210-212,214-237,239-307
+tests/plugins.test.ts
+  s_28bef4aabb95e1::t_55be8342187f2e 211-213
+  s_28bef4aabb95e1::t_a94e51b1fa23fe 214-216
+  s_28bef4aabb95e1::t_08cf1e3e17e2c1 16-17,20
+  s_28bef4aabb95e1::t_66cc218d95a1c4 52-54
+  s_28bef4aabb95e1::t_a7c837f0351ebf 188-210,217-218
+src/core.ts
+  s_28bef4aabb95e1::t_96907d0df99cdf 23
+  s_28bef4aabb95e1::t_4ac9ab9bae2493 149
+  s_28bef4aabb95e1::t_37d60d1f5d76ba 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "ef45e5600c0c4837af8113d440c002e5cd86507a",
+  "prompts": {},
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
