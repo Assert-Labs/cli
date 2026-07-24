@@ -15,7 +15,8 @@
 
 - [ ] `assert init --hooks=none` flag to opt out of auto hook initialization
 - [ ] `assert init --hooks=global` flag to use `core.hooksPath`
-- [ ] `assert cleanup` for Codex sessions, which have no session-end hook to mark
-      them ended (they show as `[ACTIVE]` until a stale-session sweep)
+- [ ] `assert cleanup` for Codex and OpenCode sessions, which have no reliable
+      session-end hook to mark them ended (they show as `[ACTIVE]` until a
+      stale-session sweep)
 - [ ] Cloud sync for reviewers to see attribution data
 - [ ] Web UI for git-blame-style attribution (line → prompt linking)

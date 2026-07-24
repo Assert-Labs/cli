@@ -73,6 +73,9 @@ npm install -g .
 assert init
 ```
 
+Restart your agent (or reload its plugins) after `assert init` so it picks up
+the newly installed hooks.
+
 ### Requirements
 
 - macOS or Linux, x64 or arm64 (no Windows or Alpine/musl build yet)
@@ -86,19 +89,27 @@ assert init
 | Claude Code | `~/.claude/skills/assert/`                         |
 | Codex       | `~/.codex/config.toml` + `~/.codex/skills/assert/` |
 | Cursor      | `~/.cursor/plugins/local/assert/`                  |
+| OpenCode    | `~/.config/opencode/plugins/assert.ts`             |
 
 - Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert init` warns when it finds only that version.
-- Support for Devin, OpenCode, Pi, and more is upcoming.
+- Support for Devin, Pi, and more is upcoming.
 - If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
 
 ## Commands
 
 ```bash
 assert init [agent]         # Initialize hooks globally (all agents if none specified)
-assert sessions             # List sessions in current directory
+assert sessions             # List sessions in current directory (--all for central storage)
 assert show <session-id>    # Show session details
+assert blame <file>         # Show line-by-line agent attribution (like git blame)
+                            #   [--json | --ndjson] [--range <start>:<end>]
+assert blame --diff <a>..<b> # Attribute only a diff's added lines (PR review)
 assert trace [ref]          # Export agent-trace attribution for a revision (default HEAD)
 assert status               # Show current status
+assert private              # Keep capturing, but stop writing sessions into this repo
+assert public               # Resume writing sessions into this repo (default)
+assert sync                 # Publish local-only sessions into the repo + rebuild blame index
+assert redact <target>      # Redact current-turn, last-tool-input, or last-tool-output
 assert disable              # Pause capture (hooks stay installed)
 assert enable               # Resume capture
 assert help                 # Show help
@@ -117,6 +128,10 @@ shows up in `git status` like any other file — you stage and commit it yoursel
   state.
 - **Turn off for one session:** set `ASSERT_DISABLE=1` in the environment your
   agent runs in.
+- **Keep sessions local:** `assert private` keeps capturing to the central store
+  but stops writing into this repo's `.sessions/`; `assert public` (the default)
+  resumes. `assert sync` publishes any local-only sessions into the repo and
+  rebuilds the blame index — handy after switching branches or going public.
 
 ## Agent Trace
 
