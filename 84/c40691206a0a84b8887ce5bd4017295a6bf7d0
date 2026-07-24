@@ -1,0 +1,24 @@
+README.md
+  s_28bef4aabb95e1::t_6c466a29e29ae1 76-78
+  s_28bef4aabb95e1::t_7bdc7c2f019442 92,95
+  s_28bef4aabb95e1::t_cc710c6ed3da23 102,104-106,109-112
+  s_28bef4aabb95e1::t_523517a7ac6927 131-134
+TODO.md
+  s_28bef4aabb95e1::t_83a83a1330558a 18-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "84c40691206a0a84b8887ce5bd4017295a6bf7d0",
+  "prompts": {},
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
