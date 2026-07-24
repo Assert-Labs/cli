@@ -23,6 +23,25 @@ describe('session sanitizer', () => {
     expect(output).not.toContain('secret-value');
   });
 
+  it('normalizes captured file arguments without rewriting other input', () => {
+    const patchText = '*** Update File: /repo/src/a.ts';
+    const jsonl = JSON.stringify({
+      type: 'tool_call', timestamp: 't1', sessionId: 's1', turnId: 'a1',
+      toolCallId: 'tc1', toolName: 'Edit',
+      input: {
+        filePath: '/repo/src/a.ts',
+        file_path: 'src\\b.ts',
+        patchText,
+        command: 'read /repo/src/a.ts',
+      },
+    });
+    const event = JSON.parse(sanitizeSessionJsonl(jsonl, '/repo'));
+    expect(event.input.filePath).toBe('src/a.ts');
+    expect(event.input.file_path).toBe('src/b.ts');
+    expect(event.input.patchText).toBe(patchText.replace('/repo', '$REPO'));
+    expect(event.input.command).toBe('read $REPO/src/a.ts');
+  });
+
   it('applies model-directed field redaction', () => {
     const jsonl = [
       JSON.stringify({

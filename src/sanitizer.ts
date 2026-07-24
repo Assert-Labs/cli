@@ -1,4 +1,5 @@
 import * as os from 'os';
+import * as path from 'path';
 import type { SessionEvent } from './schema';
 
 export type RedactionTarget = 'last-tool-input' | 'last-tool-output' | 'current-turn';
@@ -12,6 +13,7 @@ export interface RedactionDirective {
 }
 
 const SENSITIVE_KEY = /^(?:apikey|accesskey|accesstoken|refreshtoken|secret|token|password|passwd|authorization|cookie|privatekey|clientsecret)$/i;
+const FILE_PATH_KEYS = new Set(['file_path', 'filePath', 'path', 'file', 'filename']);
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[REDACTED:PRIVATE_KEY]'],
   [/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]+)\b/g, '[REDACTED:API_TOKEN]'],
@@ -28,6 +30,18 @@ function sanitizeString(value: string, gitRoot: string): string {
   if (gitRoot) sanitized = sanitized.split(gitRoot).join('$REPO');
   if (home) sanitized = sanitized.split(home).join('$HOME');
   return sanitized;
+}
+
+function normalizeToolInput(input: Record<string, unknown>, gitRoot: string) {
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => {
+      if (!FILE_PATH_KEYS.has(key) || typeof value !== 'string') return [key, value];
+      const absolute = path.resolve(gitRoot, value.replaceAll('\\', '/'));
+      const relative = path.relative(gitRoot, absolute);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) return [key, value];
+      return [key, relative.replaceAll(path.sep, '/')];
+    }),
+  );
 }
 
 function sanitizeValue(value: unknown, gitRoot: string, key?: string): unknown {
@@ -52,7 +66,12 @@ export function sanitizeSessionEvents(
   gitRoot: string,
   directives: RedactionDirective[] = [],
 ): SessionEvent[] {
-  const projected = events.map(
+  const normalized = events.map((event) =>
+    event.type === 'tool_call'
+      ? { ...event, input: normalizeToolInput(event.input, gitRoot) }
+      : event,
+  );
+  const projected = normalized.map(
     (event) => sanitizeValue(event, gitRoot) as SessionEvent,
   );
   const redactionCallIds = new Set(
