@@ -1,0 +1,23 @@
+src/sanitizer.ts
+  s_2a58cc3f9732a0::t_0827c5ca38e302 39
+  s_2a58cc3f9732a0::t_b9587872bee249 2,16,35-38,40-46,69-74
+tests/sanitizer.test.ts
+  s_2a58cc3f9732a0::t_b9587872bee249 26-39,41-44
+  s_2a58cc3f9732a0::t_0827c5ca38e302 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ec3df5322f5db65750f504d642b83307c5e85b6f",
+  "prompts": {},
+  "sessions": {
+    "s_2a58cc3f9732a0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a18150b7ffe1A03Inn1GGFevv",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
