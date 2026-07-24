@@ -1,0 +1,19 @@
+package.json
+  s_2a58cc3f9732a0::t_49033a44c94498 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8da38ff13c0abc88130f6e5e3613c305ebb0e905",
+  "prompts": {},
+  "sessions": {
+    "s_2a58cc3f9732a0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a18150b7ffe1A03Inn1GGFevv",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
