@@ -1,0 +1,19 @@
+README.md
+  s_28bef4aabb95e1::t_f633393a6f676f 94,99,104,109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "023494a23d96093d7c3012c8a4ba6726224e2f07",
+  "prompts": {},
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
