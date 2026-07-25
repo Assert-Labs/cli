@@ -91,22 +91,22 @@ the newly installed hooks.
     <th align="left">Plugin Location</th>
   </tr>
   <tr>
-    <td align="center" width="36"><a href="https://claude.com/claude-code"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/claude-code.svg" alt="Claude Code" height="22" /></a></td>
+    <td align="center" width="36"><a href="https://claude.com/claude-code"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/claude-code.svg" alt="Claude Code" height="26" align="middle" /></a></td>
     <td>Claude Code</td>
     <td><code>~/.claude/skills/assert/</code></td>
   </tr>
   <tr>
-    <td align="center" width="36"><a href="https://openai.com/codex"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" alt="Codex" height="22" /></a></td>
+    <td align="center" width="36"><a href="https://openai.com/codex"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" alt="Codex" height="26" align="middle" /></a></td>
     <td>Codex</td>
     <td><code>~/.codex/config.toml</code> + <code>~/.codex/skills/assert/</code></td>
   </tr>
   <tr>
-    <td align="center" width="36"><a href="https://cursor.com"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor.svg" alt="Cursor" height="22" /></a></td>
+    <td align="center" width="36"><a href="https://cursor.com"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor.svg" alt="Cursor" height="26" align="middle" /></a></td>
     <td>Cursor</td>
     <td><code>~/.cursor/plugins/local/assert/</code></td>
   </tr>
   <tr>
-    <td align="center" width="36"><a href="https://opencode.ai"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode.svg" alt="OpenCode" height="22" /></a></td>
+    <td align="center" width="36"><a href="https://opencode.ai"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode.svg" alt="OpenCode" height="26" align="middle" /></a></td>
     <td>OpenCode</td>
     <td><code>~/.config/opencode/plugins/assert.ts</code></td>
   </tr>
