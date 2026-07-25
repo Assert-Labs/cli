@@ -40,6 +40,7 @@ import {
 import {
   type SessionEvent,
   type SessionStartEvent,
+  type SessionEndEvent,
   type LineOwnership,
   type LineAttributionEvent,
   serializeSessionEvent,
@@ -1176,4 +1177,94 @@ export function endSession(
   state.currentTurnId = null;
   state.pendingToolCalls.clear();
   saveState(state);
+}
+
+// Publish a session_end lifecycle event into a session's already-materialized
+// repo dirs (local mirror + public `.sessions/`) without touching attribution —
+// mirrors syncRepo's `zzzz-<ts>-session_end.jsonl` convention. Only writes where
+// the session dir already exists, so it never materializes a fresh copy.
+function publishLifecycleEnd(state: SessionState, event: SessionEndEvent): void {
+  const dirName = sessionDirName(state.sessionId, state.createdAt);
+  const stamp = event.timestamp.replace(/\D/g, '');
+  const bases: string[] = [];
+  for (const repo of Object.values(state.repos)) {
+    bases.push(path.join(getSessionsDir(), repo.repoId));
+    if (!capturePrivate()) bases.push(path.join(repo.gitRoot, '.sessions'));
+  }
+  for (const base of bases) {
+    const sdir = path.join(base, dirName);
+    if (!fs.existsSync(sdir)) continue;
+    const lifecyclePath = path.join(sdir, `zzzz-${stamp}-session_end.jsonl`);
+    if (!fs.existsSync(lifecyclePath)) {
+      fs.writeFileSync(lifecyclePath, `${serializeSessionEvent(event)}\n`);
+    }
+  }
+}
+
+/**
+ * Sweep stale, still-open sessions and mark them ended. Agents like Codex and
+ * OpenCode have no reliable session-end hook, so their sessions linger as
+ * `[ACTIVE]` after the process exits (a crashed session of any agent does too).
+ * A session is stale when its state file hasn't been touched in `maxAgeMs`.
+ *
+ * This records the end only — it does NOT re-run attribution. Each turn already
+ * finalized on Stop, and re-diffing a long-abandoned session against the current
+ * tree would wrongly sweep in unrelated later changes. Returns the ended ids.
+ */
+export function cleanupStaleSessions(
+  maxAgeMs: number = 24 * 60 * 60 * 1000,
+  now: number = Date.now(),
+): string[] {
+  const dir = getSessionsDir();
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+
+  const ended: string[] = [];
+  let index = loadIndex();
+  let indexTouched = false;
+
+  for (const file of files) {
+    const suffix = '-state.json';
+    if (!file.endsWith(suffix)) continue;
+
+    let mtimeMs: number;
+    try {
+      mtimeMs = fs.statSync(path.join(dir, file)).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (now - mtimeMs < maxAgeMs) continue;
+
+    // Filename is `<sessionId>.<source>-state.json`; neither part contains a dot.
+    const name = file.slice(0, -suffix.length);
+    const dot = name.lastIndexOf('.');
+    if (dot < 0) continue;
+    const state = loadStoredState(name.slice(0, dot), name.slice(dot + 1));
+    if (!state || state.endedAt) continue;
+
+    const endedAt = new Date(now).toISOString();
+    const event: SessionEndEvent = {
+      type: 'session_end',
+      timestamp: endedAt,
+      sessionId: state.sessionId,
+      reason: 'aborted',
+    };
+    writeEvent(state.sessionId, event);
+    publishLifecycleEnd(state, event);
+    index = endSessionIndex(index, state.sessionId, endedAt);
+    indexTouched = true;
+
+    state.endedAt = endedAt;
+    state.currentTurnId = null;
+    state.pendingToolCalls.clear();
+    saveState(state);
+    ended.push(state.sessionId);
+  }
+
+  if (indexTouched) saveIndex(index);
+  return ended;
 }

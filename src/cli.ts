@@ -20,6 +20,7 @@ import {
   rebuildBlameIndex,
   publishLocalSessions,
   addRedactionDirective,
+  cleanupStaleSessions,
 } from './hooks/session-recorder';
 import type { RedactionTarget } from './sanitizer';
 import {
@@ -612,6 +613,23 @@ function cmdSync(): void {
   log(`Synced: published ${promoted} local session(s) into .sessions/, blame index rebuilt.`);
 }
 
+/**
+ * Mark stale, still-open sessions as ended. Codex and OpenCode have no reliable
+ * session-end hook, so their sessions linger as [ACTIVE] after the agent exits;
+ * a crashed session of any agent does too. Sweeps sessions whose state file
+ * hasn't changed in `hours` (default 24) and records their end without touching
+ * attribution.
+ */
+function cmdCleanup(hours: number): void {
+  const ended = cleanupStaleSessions(hours * 60 * 60 * 1000);
+  if (ended.length === 0) {
+    log(`No stale sessions (idle > ${hours}h) to clean up.`);
+    return;
+  }
+  log(`Marked ${ended.length} stale session(s) ended:`);
+  for (const id of ended) console.log(`  - ${id}`);
+}
+
 /** Collect attribution events from the committed .sessions/ JSONL files. */
 function gatherFragments(gitRoot: string): AttributionEvent[] {
   const base = path.join(gitRoot, '.sessions');
@@ -1084,6 +1102,7 @@ Usage:
   assert private                 Keep capturing locally, but stop writing sessions into this repo
   assert public                  Resume writing sessions into this repo (default)
   assert sync                    Publish local sessions into the repo + rebuild the blame index
+  assert cleanup [--hours <n>]   Mark stale still-open sessions ended (default idle > 24h)
   assert redact <target>         Redact current-turn, last-tool-input, or last-tool-output
   assert disable                 Stop capturing entirely (hooks stay installed)
   assert enable                  Resume capturing
@@ -1216,6 +1235,21 @@ async function main(): Promise<void> {
     case 'sync':
       cmdSync();
       break;
+    case 'cleanup': {
+      const rest = args.slice(1);
+      const flagIdx = rest.findIndex((a) => a === '--hours');
+      let hours = 24;
+      if (flagIdx !== -1) {
+        const n = parseFloat(rest[flagIdx + 1] ?? '');
+        if (!Number.isFinite(n) || n < 0) {
+          error('Usage: assert cleanup [--hours <n>]');
+          process.exit(1);
+        }
+        hours = n;
+      }
+      cmdCleanup(hours);
+      break;
+    }
     case 'redact': {
       const target = args[1];
       if (!['current-turn', 'last-tool-input', 'last-tool-output'].includes(target)) {

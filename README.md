@@ -109,6 +109,7 @@ assert status               # Show current status
 assert private              # Keep capturing, but stop writing sessions into this repo
 assert public               # Resume writing sessions into this repo (default)
 assert sync                 # Publish local-only sessions into the repo + rebuild blame index
+assert cleanup              # Mark stale still-open sessions ended (default idle > 24h; --hours <n>)
 assert redact <target>      # Redact current-turn, last-tool-input, or last-tool-output
 assert disable              # Pause capture (hooks stay installed)
 assert enable               # Resume capture
