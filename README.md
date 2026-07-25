@@ -91,22 +91,22 @@ the newly installed hooks.
     <th align="left">Plugin Location</th>
   </tr>
   <tr>
-    <td align="center" width="36"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/claude-code.svg" alt="Claude Code" height="22" /></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/claude-code.svg" alt="Claude Code" height="30" /></td>
     <td>Claude Code</td>
     <td><code>~/.claude/skills/assert/</code></td>
   </tr>
   <tr>
-    <td align="center" width="36"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" alt="Codex" height="22" /></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" alt="Codex" height="30" /></td>
     <td>Codex</td>
     <td><code>~/.codex/config.toml</code> + <code>~/.codex/skills/assert/</code></td>
   </tr>
   <tr>
-    <td align="center" width="36"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor.svg" alt="Cursor" height="22" /></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor.svg" alt="Cursor" height="30" /></td>
     <td>Cursor</td>
     <td><code>~/.cursor/plugins/local/assert/</code></td>
   </tr>
   <tr>
-    <td align="center" width="36"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode.svg" alt="OpenCode" height="22" /></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode.svg" alt="OpenCode" height="30" /></td>
     <td>OpenCode</td>
     <td><code>~/.config/opencode/plugins/assert.ts</code></td>
   </tr>
