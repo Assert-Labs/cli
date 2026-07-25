@@ -1,0 +1,35 @@
+src/cli.ts
+  s_28bef4aabb95e1::t_eb1b804234f069 23
+  s_28bef4aabb95e1::t_3bd74b169213d8 616-632
+  s_28bef4aabb95e1::t_a82f9e415d7752 1105
+  s_28bef4aabb95e1::t_2d3739c681127d 1238-1252
+tests/hooks/session-recorder.test.ts
+  s_28bef4aabb95e1::t_a8d33e7661fdff 10-11,13-14
+  s_28bef4aabb95e1::t_9b7c14a7889668 80-155
+README.md
+  s_28bef4aabb95e1::t_cbaee27bd45d24 112
+src/hooks/session-recorder.ts
+  s_28bef4aabb95e1::t_01c240d7fc2110 1181-1270
+  s_28bef4aabb95e1::t_c430e699033a03 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fa0d371674554ae35b3b3d740aaa4f1b33860b37",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
