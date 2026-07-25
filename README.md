@@ -84,12 +84,13 @@ the newly installed hooks.
 
 ## Supported Agents
 
-| Agent       | Plugin Location                                    |
-| ----------- | -------------------------------------------------- |
-| Claude Code | `~/.claude/skills/assert/`                         |
-| Codex       | `~/.codex/config.toml` + `~/.codex/skills/assert/` |
-| Cursor      | `~/.cursor/plugins/local/assert/`                  |
-| OpenCode    | `~/.config/opencode/plugins/assert.ts`             |
+<!-- prettier-ignore -->
+| Agent | Plugin Location |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/claude-code.svg" height="16" /> Claude Code | `~/.claude/skills/assert/` |
+| <img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" height="16" /> Codex | `~/.codex/config.toml` + `~/.codex/skills/assert/` |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor-dark.svg" /><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor-light.svg" height="16" /></picture> Cursor | `~/.cursor/plugins/local/assert/` |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode-dark.svg" /><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode-light.svg" height="16" /></picture> OpenCode | `~/.config/opencode/plugins/assert.ts` |
 
 - Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert init` warns when it finds only that version.
 - Support for Devin, Pi, and more is upcoming.
