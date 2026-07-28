@@ -131,8 +131,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (for the Homebrew formula template)
+      - name: Checkout (full history for git-cliff notes + Homebrew formula)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Download all binaries
         uses: actions/download-artifact@v4
@@ -144,6 +150,11 @@ jobs:
         working-directory: artifacts
         run: sha256sum assert-* > SHA256SUMS
 
+      # Grouped release notes from Conventional Commits since the previous tag.
+      # Pinned to the git-cliff version validated against cliff.toml.
+      - name: Generate release notes
+        run: npx --yes git-cliff@2.13.1 --config cliff.toml --latest --output RELEASE_NOTES.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -152,7 +163,7 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
+            --notes-file RELEASE_NOTES.md \
             artifacts/assert-* artifacts/SHA256SUMS
 
       - name: Update Homebrew tap

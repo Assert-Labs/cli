@@ -1,0 +1,40 @@
+# git-cliff configuration — turns Conventional Commits into grouped release
+# notes. Used by .github/workflows/release.yml to fill each GitHub Release body
+# (git-cliff --latest) with the commits since the previous tag.
+
+[changelog]
+# No header: the release body is just the grouped changes + a compare link.
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | trim | upper_first }}\
+{% endfor %}
+{% endfor %}
+{% if version and previous.version %}
+**Full Changelog**: https://github.com/Assert-Labs/cli/compare/{{ previous.version }}...{{ version }}
+{% endif %}
+"""
+trim = true
+
+[git]
+conventional_commits = true
+# Keep non-conventional commits too (routed to "Other" below) so nothing a
+# release contains is ever silently dropped.
+filter_unconventional = false
+# Parsers are matched top-to-bottom; first match wins.
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactoring" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^(chore|ci|build|test|style)(\\(|:|!)", skip = true },
+  { message = "^bump version", skip = true },
+  { message = "^Revert", group = "Reverts" },
+  { message = ".*", group = "Other" },
+]
+# Only version tags are release boundaries.
+tag_pattern = "v[0-9]*"
+sort_commits = "oldest"
