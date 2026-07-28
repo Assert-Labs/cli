@@ -30,10 +30,14 @@ import {
   codexSkillDir,
   openCodePluginDir,
   openCodePluginPath,
+  piExtensionDir,
+  piExtensionPath,
+  piSkillDir,
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
   generateOpenCodePlugin,
+  generatePiExtension,
   upsertCodexConfigHooks,
   findCodexCli,
   detectCodexCliVersion,
@@ -119,6 +123,11 @@ function detectInstalledAgents(): string[] {
   // OpenCode: check for its global config directory (~/.config/opencode)
   if (fs.existsSync(path.join(home, '.config', 'opencode'))) {
     detected.push('opencode');
+  }
+
+  // Pi: check for its home directory (~/.pi)
+  if (fs.existsSync(path.join(home, '.pi'))) {
+    detected.push('pi');
   }
 
   return detected;
@@ -216,6 +225,18 @@ function installOpenCodePlugin(home: string): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(openCodePluginPath(home), generateOpenCodePlugin(VERSION, assertBin));
   log('✓ OpenCode');
+}
+
+function installPiPlugin(home: string): void {
+  const assertBin = path.join(home, '.assert', 'bin', 'assert');
+  fs.mkdirSync(piExtensionDir(home), { recursive: true });
+  fs.writeFileSync(piExtensionPath(home), generatePiExtension(VERSION, assertBin));
+
+  const skillDir = piSkillDir(home);
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMd());
+
+  log('✓ Pi');
 }
 
 /**
@@ -331,7 +352,7 @@ async function cmdInit(agent?: string): Promise<void> {
 
   // Detect installed agents
   const detectedAgents = detectInstalledAgents();
-  const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode'];
+  const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
 
   // Filter to requested agent or all detected+supported
   let agentsToInstall: string[];
@@ -362,6 +383,8 @@ async function cmdInit(agent?: string): Promise<void> {
       installCodexPlugin(home);
     } else if (a === 'opencode') {
       installOpenCodePlugin(home);
+    } else if (a === 'pi') {
+      installPiPlugin(home);
     }
   }
 
@@ -370,7 +393,7 @@ async function cmdInit(agent?: string): Promise<void> {
 }
 
 async function cmdHook(agent: string, hookType: string): Promise<void> {
-  const validAgents = ['claude-code', 'cursor', 'codex', 'opencode'];
+  const validAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
   if (!validAgents.includes(agent)) {
     error(`Unknown agent: ${agent}`);
     process.exit(1);
@@ -1113,6 +1136,7 @@ Supported agents:
   cursor          Cursor IDE
   codex           OpenAI Codex CLI
   opencode        OpenCode
+  pi              Pi (pi.dev)
 
 Examples:
   assert init                    # Initialize hooks for all agents

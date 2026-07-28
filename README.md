@@ -110,10 +110,14 @@ the newly installed hooks.
     <td>OpenCode</td>
     <td><code>~/.config/opencode/plugins/assert.ts</code></td>
   </tr>
+  <tr>
+    <td align="center" width="36"><a href="https://pi.dev"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/pi.svg" alt="Pi" height="22" /></a></td>
+    <td>Pi</td>
+    <td><code>~/.pi/agent/extensions/assert.ts</code> + <code>~/.pi/agent/skills/assert/</code></td>
+  </tr>
 </table>
 
 - Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert init` warns when it finds only that version.
-- Support for Devin, Pi, and more is upcoming.
 - If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
 
 ## Commands

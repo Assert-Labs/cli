@@ -15,9 +15,13 @@ import {
   codexHookTrustHash,
   openCodePluginDir,
   openCodePluginPath,
+  piExtensionDir,
+  piExtensionPath,
+  piSkillDir,
   generateClaudeCodePlugin,
   generateCursorPlugin,
   generateOpenCodePlugin,
+  generatePiExtension,
   upsertCodexConfigHooks,
   skillMd,
 } from '../src/plugins';
@@ -214,6 +218,31 @@ describe('plugins', () => {
     // Dedupes SessionStart — OpenCode's event bus can deliver session.created twice.
     expect(src).toContain('started.has(sid)');
     expect(src).toContain('started.add(sid)');
+  });
+
+  it('installs the Pi extension and skill under the auto-loaded ~/.pi/agent dirs', () => {
+    expect(piExtensionDir('/home/u')).toBe('/home/u/.pi/agent/extensions');
+    expect(piExtensionPath('/home/u')).toBe('/home/u/.pi/agent/extensions/assert.ts');
+    expect(piSkillDir('/home/u')).toBe('/home/u/.pi/agent/skills/assert');
+  });
+
+  it('Pi extension forwards each event to `assert hook pi`', () => {
+    const bin = '/home/u/.assert/bin/assert';
+    const src = generatePiExtension('1.2.3', bin);
+    expect(src).toContain(`const ASSERT_BIN = ${JSON.stringify(bin)}`);
+    expect(src).toContain('"hook", "pi", event');
+    expect(src).toContain('v1.2.3');
+    // Default export factory + typed-free shim (no @earendil-works import needed).
+    expect(src).toContain('export default function (pi)');
+    // Subscribes to Pi's events and maps them to the adapter's event names.
+    for (const evt of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'AssistantText', 'Stop', 'SessionEnd']) {
+      expect(src).toContain(`"${evt}"`);
+    }
+    for (const on of ['"session_start"', '"before_agent_start"', '"tool_call"', '"tool_result"', '"message_end"', '"agent_settled"', '"session_shutdown"']) {
+      expect(src).toContain(`pi.on(${on}`);
+    }
+    // Carries the provider alongside the bare model id.
+    expect(src).toContain('provider');
   });
 
   it('probes PATH, the desktop app, and CODEX_CLI_PATH for the Codex CLI', () => {

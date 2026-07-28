@@ -171,7 +171,7 @@ export type SessionEvent =
 
 // === Supporting Types ===
 
-export type SessionSource = 'cursor' | 'claude-code' | 'codex' | 'opencode' | 'unknown';
+export type SessionSource = 'cursor' | 'claude-code' | 'codex' | 'opencode' | 'pi' | 'unknown';
 
 export interface LineRange {
   startLine: number; // 1-indexed

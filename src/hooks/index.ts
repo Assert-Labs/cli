@@ -8,8 +8,9 @@ import * as claudeCode from './claude-code';
 import * as cursor from './cursor';
 import * as codex from './codex';
 import * as opencode from './opencode';
+import * as pi from './pi';
 
-export type AgentType = 'claude-code' | 'cursor' | 'codex' | 'opencode';
+export type AgentType = 'claude-code' | 'cursor' | 'codex' | 'opencode' | 'pi';
 
 /**
  * Process a hook invocation
@@ -31,6 +32,9 @@ export async function processHook(
       break;
     case 'opencode':
       await opencode.processHook(hookType, input);
+      break;
+    case 'pi':
+      await pi.processHook(hookType, input);
       break;
     default:
       console.error(`[assert] Unknown agent type: ${agent}`);
