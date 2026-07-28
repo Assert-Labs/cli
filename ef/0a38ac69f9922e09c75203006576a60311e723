@@ -1,0 +1,51 @@
+tests/plugins.test.ts
+  s_28bef4aabb95e1::t_25f3e068525b32 18-20,24
+  s_28bef4aabb95e1::t_94c685c952b95f 223-247
+src/hooks/pi.ts
+  s_28bef4aabb95e1::t_451562b4390987 1-277
+src/cli.ts
+  s_28bef4aabb95e1::t_a5f9000b598e45 128-132
+  s_28bef4aabb95e1::t_1cfa0c4cca247e 33-35,40
+  s_28bef4aabb95e1::t_d32dc6654b8dde 1139
+  s_28bef4aabb95e1::t_b88424b5e618b8 386-387
+  s_28bef4aabb95e1::t_b1a6b149b3d609 230-241
+  s_28bef4aabb95e1::t_cbfaa23143963b 355
+  s_28bef4aabb95e1::t_1eede4bf9123eb 396
+src/hooks/index.ts
+  s_28bef4aabb95e1::t_8af35c9d42da0c 11,13
+  s_28bef4aabb95e1::t_5836cb7cea7a3b 36-38
+assets/agents/pi.svg
+  s_28bef4aabb95e1::t_f764ec1a051cd3 1
+src/schema.ts
+  s_28bef4aabb95e1::t_da3d5505e074c0 174
+README.md
+  s_28bef4aabb95e1::t_1f47d77b069b64 113-117
+package.json
+  s_28bef4aabb95e1::t_5eaaa84d27c3be 3
+tests/hooks/pi.test.ts
+  s_28bef4aabb95e1::t_937eafad065989 1-178
+src/plugins.ts
+  s_28bef4aabb95e1::t_bc056429abf762 41-54
+  s_28bef4aabb95e1::t_b5f72e8f35c3fa 503-624
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ef0a38ac69f9922e09c75203006576a60311e723",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
