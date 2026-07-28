@@ -291,6 +291,19 @@ export function findStableBinPath(
   return null;
 }
 
+/**
+ * Which agents `assert init` installs for: just the requested one, or ALL
+ * supported agents when none is given. Installing for all — even agents not yet
+ * present — pre-places each hook in its standard directory so install order
+ * doesn't matter (an agent installed later auto-discovers it).
+ */
+export function resolveInitAgents(
+  agent: string | undefined,
+  supported: string[],
+): string[] {
+  return agent ? [agent] : supported;
+}
+
 async function cmdInit(agent?: string): Promise<void> {
   const home = process.env.HOME || process.env.USERPROFILE || '';
   const assertDir = path.join(home, '.assert');
@@ -350,28 +363,20 @@ async function cmdInit(agent?: string): Promise<void> {
 
   log(`Linked ${destBin} -> ${linkTarget}`);
 
-  // Detect installed agents
-  const detectedAgents = detectInstalledAgents();
   const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
 
-  // Filter to requested agent or all detected+supported
-  let agentsToInstall: string[];
-  if (agent) {
-    if (!supportedAgents.includes(agent)) {
-      error(`Unsupported agent: ${agent}`);
-      log(`Supported agents: ${supportedAgents.join(', ')}`);
-      process.exit(1);
-    }
-    agentsToInstall = [agent];
-  } else {
-    agentsToInstall = detectedAgents.filter((a) => supportedAgents.includes(a));
-  }
+  // Detection is only for messaging. We pre-place the plugin for EVERY supported
+  // agent into its standard plugin directory — even agents not installed yet —
+  // so an agent installed AFTER assert auto-discovers the hook on first run.
+  // Install order no longer matters; re-run `assert init` to refresh hooks.
+  const detected = new Set(detectInstalledAgents());
 
-  if (agentsToInstall.length === 0) {
-    log('No supported agents detected.');
+  if (agent && !supportedAgents.includes(agent)) {
+    error(`Unsupported agent: ${agent}`);
     log(`Supported agents: ${supportedAgents.join(', ')}`);
-    return;
+    process.exit(1);
   }
+  const agentsToInstall = resolveInitAgents(agent, supportedAgents);
 
   // Install plugins (each bundles the capture hooks + the guidance skill).
   for (const a of agentsToInstall) {
@@ -388,7 +393,14 @@ async function cmdInit(agent?: string): Promise<void> {
     }
   }
 
+  const preProvisioned = agentsToInstall.filter((a) => !detected.has(a));
   console.log('');
+  if (preProvisioned.length > 0) {
+    log(
+      `Pre-provisioned for agents not yet installed (${preProvisioned.join(', ')}); ` +
+        'each activates automatically once you install it.',
+    );
+  }
   log('Restart your agent or run /reload-plugins to activate.');
 }
 

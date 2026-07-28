@@ -11,6 +11,7 @@ import {
   parseUnifiedDiffAddedLines,
   buildAgentHashIndex,
   parseDiffRange,
+  resolveInitAgents,
 } from '../src/cli';
 import { hashLine, type AttributionRecord } from '../src/line-attribution';
 
@@ -323,6 +324,20 @@ describe('CLI integration', () => {
     it('parses the range spec (A..B, or a bare commit)', () => {
       expect(parseDiffRange('main..feature')).toEqual({ base: 'main', head: 'feature' });
       expect(parseDiffRange('abc123')).toEqual({ base: 'abc123^', head: 'abc123' });
+    });
+  });
+
+  describe('resolveInitAgents (install-order independence)', () => {
+    const supported = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
+
+    it('installs for ALL supported agents when none is specified (pre-placement)', () => {
+      // The core of order-independence: `assert init` provisions every agent,
+      // even ones not installed yet, so a later install auto-discovers the hook.
+      expect(resolveInitAgents(undefined, supported)).toEqual(supported);
+    });
+
+    it('installs only the requested agent when one is given', () => {
+      expect(resolveInitAgents('pi', supported)).toEqual(['pi']);
     });
   });
 });

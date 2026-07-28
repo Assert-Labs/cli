@@ -76,6 +76,13 @@ assert init
 Restart your agent (or reload its plugins) after `assert init` so it picks up
 the newly installed hooks.
 
+**Install order doesn't matter.** `assert init` pre-installs the hook for every
+supported agent — including ones you haven't installed yet — into that agent's
+standard plugin directory. An agent you install *later* auto-discovers the hook
+on its first run, no re-init required. You can still re-run `assert init` any
+time to refresh hooks (e.g. after upgrading assert, or to pick up an agent's
+version-specific features), or `assert init <agent>` to (re)install just one.
+
 ### Requirements
 
 - macOS or Linux, x64 or arm64 (no Windows or Alpine/musl build yet)
