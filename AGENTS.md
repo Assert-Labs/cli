@@ -26,6 +26,13 @@ context, contribution process, and security policy, see
   Finishing a change typically means the edits are made and verified (typecheck/test) and
   left in the working tree. Wait for an explicit "commit".
 - Same rule for `git push`, branch creation, and PRs — git actions need an explicit request.
+- **Write [Conventional Commits](https://www.conventionalcommits.org):**
+  `<type>: <description>`, where `<type>` is one of `feat`, `fix`, `docs`,
+  `refactor`, `perf`, `test`, `ci`, `build`, or `chore` (append `!` or a
+  `BREAKING CHANGE:` footer for a breaking change). The release workflow runs
+  git-cliff (see `cliff.toml`) over these to group the GitHub Release notes by
+  type, so an unprefixed subject lands the change under "Other" or mis-groups it;
+  `chore|ci|build|test|style` and `bump version` are omitted from the notes.
 
 ## Where tests go
 
