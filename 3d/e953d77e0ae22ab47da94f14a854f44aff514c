@@ -1,0 +1,22 @@
+cliff.toml
+  s_28bef4aabb95e1::t_a3ef7203ea1681 1-40
+.github/workflows/release.yml
+  s_28bef4aabb95e1::t_2d3ffb1e7ca021 134,136-141
+  s_28bef4aabb95e1::t_f09ef07e7c873f 153-157,166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3de953d77e0ae22ab47da94f14a854f44aff514c",
+  "prompts": {},
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
