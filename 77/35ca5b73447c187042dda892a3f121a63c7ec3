@@ -1,0 +1,21 @@
+assets/agents/pi.svg
+  s_28bef4aabb95e1::t_29691f86e2b899 1
+LOGO_TEST.md
+  s_28bef4aabb95e1::t_22e56c14320e6e 1,3-6,8,17,22,27,32,37,43,52,57,62,67,72,78,87,92,97,102,107,113,122,127,132,137,142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7735ca5b73447c187042dda892a3f121a63c7ec3",
+  "prompts": {},
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
