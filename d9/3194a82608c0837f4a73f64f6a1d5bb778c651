@@ -1,0 +1,19 @@
+LOGO_TEST.md
+  s_28bef4aabb95e1::t_1e766e23d50334 1-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d93194a82608c0837f4a73f64f6a1d5bb778c651",
+  "prompts": {},
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
