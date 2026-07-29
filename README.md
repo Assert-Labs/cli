@@ -105,7 +105,7 @@ version-specific features), or `assert init <agent>` to (re)install just one.
   <tr>
     <td align="center" width="36"><a href="https://openai.com/codex"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" alt="Codex" height="22" /></a></td>
     <td>Codex</td>
-    <td><code>~/.codex/config.toml</code> + <code>~/.codex/skills/assert/</code></td>
+    <td><code>~/.codex/config.toml</code></td>
   </tr>
   <tr>
     <td align="center" width="36"><a href="https://cursor.com"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor.svg" alt="Cursor" height="22" /></a></td>
@@ -120,7 +120,7 @@ version-specific features), or `assert init <agent>` to (re)install just one.
   <tr>
     <td align="center" width="36"><a href="https://pi.dev"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/pi.svg" alt="Pi" height="22" /></a></td>
     <td>Pi</td>
-    <td><code>~/.pi/agent/extensions/assert.ts</code> + <code>~/.pi/agent/skills/assert/</code></td>
+    <td><code>~/.pi/agent/extensions/assert.ts</code></td>
   </tr>
 </table>
 

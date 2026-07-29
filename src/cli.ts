@@ -27,12 +27,10 @@ import {
   claudePluginDir,
   cursorPluginDir,
   codexConfigPath,
-  codexSkillDir,
   openCodePluginDir,
   openCodePluginPath,
   piExtensionDir,
   piExtensionPath,
-  piSkillDir,
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
@@ -41,7 +39,6 @@ import {
   upsertCodexConfigHooks,
   findCodexCli,
   detectCodexCliVersion,
-  skillMd,
 } from './plugins';
 import {
   listSessionFiles,
@@ -146,23 +143,17 @@ function writePlugin(
   fs.writeFileSync(path.join(hooksDir, 'hooks.json'), files.hooksJson + '\n');
 }
 
-// Write the shared Agent Skill into a plugin's skills/assert/ directory.
-function writeSkill(pluginDir: string): void {
-  const skillDir = path.join(pluginDir, 'skills', 'assert');
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMd());
-}
-
 function installClaudeCodePlugin(home: string): void {
   const dir = claudePluginDir(home);
   const claudeVersion = detectClaudeCodeVersion();
+  // A folder under ~/.claude/skills/ with a .claude-plugin/plugin.json loads as
+  // a `<name>@skills-dir` plugin; its hooks/hooks.json fires on every session,
+  // independent of any SKILL.md. Capture is the hooks — we ship no skill.
   writePlugin(
     dir,
     '.claude-plugin',
     generateClaudeCodePlugin(VERSION, claudeVersion),
   );
-  // Claude treats ~/.claude/skills/assert itself as the skill folder.
-  fs.writeFileSync(path.join(dir, 'SKILL.md'), skillMd());
   log('✓ Claude Code');
 }
 
@@ -179,16 +170,11 @@ function installCursorPlugin(home: string): void {
   }
   const dir = cursorPluginDir(home);
   writePlugin(dir, '.cursor-plugin', generateCursorPlugin(VERSION));
-  writeSkill(dir);
   log('✓ Cursor');
 }
 
 function installCodexPlugin(home: string): void {
   const assertBin = path.join(home, '.assert', 'bin', 'assert');
-
-  const skillDir = codexSkillDir(home);
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMd());
 
   const configPath = codexConfigPath(home);
   let config: string | null = null;
@@ -231,11 +217,6 @@ function installPiPlugin(home: string): void {
   const assertBin = path.join(home, '.assert', 'bin', 'assert');
   fs.mkdirSync(piExtensionDir(home), { recursive: true });
   fs.writeFileSync(piExtensionPath(home), generatePiExtension(VERSION, assertBin));
-
-  const skillDir = piSkillDir(home);
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMd());
-
   log('✓ Pi');
 }
 

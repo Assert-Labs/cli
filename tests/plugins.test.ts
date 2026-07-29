@@ -10,20 +10,17 @@ import {
   claudePluginDir,
   cursorPluginDir,
   codexConfigPath,
-  codexSkillDir,
   codexCliCandidates,
   codexHookTrustHash,
   openCodePluginDir,
   openCodePluginPath,
   piExtensionDir,
   piExtensionPath,
-  piSkillDir,
   generateClaudeCodePlugin,
   generateCursorPlugin,
   generateOpenCodePlugin,
   generatePiExtension,
   upsertCodexConfigHooks,
-  skillMd,
 } from '../src/plugins';
 
 describe('plugins', () => {
@@ -44,20 +41,6 @@ describe('plugins', () => {
     expect(JSON.parse(pluginJson).version).toBe('1.2.3');
   });
 
-  it('ships a standard Agent Skill conveying that .sessions/ is intentional', () => {
-    const skill = skillMd();
-    expect(skill).toMatch(/^---\nname: assert\n/);
-    expect(skill).toContain('.sessions/');
-    expect(skill.toLowerCase()).toContain('commit');
-    expect(skill.toLowerCase()).toContain('enabled');
-    expect(skill).toContain('Do **not** invoke redaction for');
-    expect(skill).toContain('rare fallback');
-    expect(skill).toContain('Do not proactively scan every turn');
-    // Frames capture as low-key background bookkeeping, not a task concern.
-    expect(skill.toLowerCase()).toContain('background');
-    expect(skill.toLowerCase()).toContain('routine bookkeeping');
-  });
-
   it('Claude Code plugin gates version-specific events', () => {
     const old = JSON.parse(generateClaudeCodePlugin('0.1.0', '2.1.100').hooksJson);
     expect(old.hooks.MessageDisplay).toBeUndefined();
@@ -67,9 +50,8 @@ describe('plugins', () => {
     expect(recent.hooks.MessageDisplay).toBeDefined();
   });
 
-  it('writes Codex hooks to config.toml and the skill under ~/.codex/skills', () => {
+  it('writes Codex hooks to config.toml', () => {
     expect(codexConfigPath('/home/u')).toBe('/home/u/.codex/config.toml');
-    expect(codexSkillDir('/home/u')).toBe('/home/u/.codex/skills/assert');
   });
 
   it('reproduces Codex trust hashes (locked to Codex fingerprint algorithm)', () => {
@@ -220,10 +202,9 @@ describe('plugins', () => {
     expect(src).toContain('started.add(sid)');
   });
 
-  it('installs the Pi extension and skill under the auto-loaded ~/.pi/agent dirs', () => {
+  it('installs the Pi extension under the auto-loaded ~/.pi/agent/extensions dir', () => {
     expect(piExtensionDir('/home/u')).toBe('/home/u/.pi/agent/extensions');
     expect(piExtensionPath('/home/u')).toBe('/home/u/.pi/agent/extensions/assert.ts');
-    expect(piSkillDir('/home/u')).toBe('/home/u/.pi/agent/skills/assert');
   });
 
   it('Pi extension forwards each event to `assert hook pi`', () => {

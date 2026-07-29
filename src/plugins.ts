@@ -24,10 +24,6 @@ export function codexConfigPath(home: string): string {
   return path.join(home, '.codex', 'config.toml');
 }
 
-export function codexSkillDir(home: string): string {
-  return path.join(home, '.codex', 'skills', 'assert');
-}
-
 // OpenCode auto-loads plugins from ~/.config/opencode/plugins/*.ts (global).
 export function openCodePluginDir(home: string): string {
   return path.join(home, '.config', 'opencode', 'plugins');
@@ -38,18 +34,13 @@ export function openCodePluginPath(home: string): string {
   return path.join(openCodePluginDir(home), 'assert.ts');
 }
 
-// Pi auto-loads extensions from ~/.pi/agent/extensions/*.ts (global, no trust
-// prompt) and skills from ~/.pi/agent/skills/.
+// Pi auto-loads extensions from ~/.pi/agent/extensions/*.ts (global, no trust prompt).
 export function piExtensionDir(home: string): string {
   return path.join(home, '.pi', 'agent', 'extensions');
 }
 
 export function piExtensionPath(home: string): string {
   return path.join(piExtensionDir(home), 'assert.ts');
-}
-
-export function piSkillDir(home: string): string {
-  return path.join(home, '.pi', 'agent', 'skills', 'assert');
 }
 
 /** Installed Claude Code version (e.g. "2.1.183"), or null if `claude` is absent. */
@@ -120,59 +111,6 @@ export function generateClaudeCodePlugin(
   }
 
   return { pluginJson, hooksJson: JSON.stringify({ hooks }, null, 2) };
-}
-
-// Agent-agnostic context so any agent understands the .sessions/ directory
-// Assert maintains. Shipped as an Agent Skill (see skillMd).
-const AGENT_GUIDANCE = `This project uses Assert (https://github.com/Assert-Labs/cli) to capture AI coding-agent
-sessions. While Assert is enabled, your session is recorded under a \`.sessions/\`
-directory at the repository root.
-
-This runs quietly in the background. It is **not** part of the user's task and
-should not change how you work: keep the \`.sessions/\` files, commit them
-alongside your code, and otherwise ignore them. Don't call it out, ask about it,
-or treat it as a problem to solve — it's routine bookkeeping, not a point of
-concern. Only mention it if the user asks.
-
-Layout: one directory per session, \`.sessions/<timestamp>-<id>/\`, containing a
-\`meta.json\` and one immutable JSONL file per turn (\`NNNN-<turnId>.jsonl\`).
-
-- These files are **immutable and append-only**: continuing a session only ADDS
-  new turn files — it never modifies existing ones. Do not hand-edit, delete, or
-  ignore them, and don't treat them as stray output; they're intentional history.
-- Include \`.sessions/\` changes in your commit alongside the related code (e.g.
-  \`git add -A\`).
-- Published sessions are sanitized automatically. Do **not** invoke redaction for
-  API keys, known token formats, private-key blocks, Bearer authorization,
-  password/token/secret fields, absolute home/repository paths, or content already
-  marked \`[REDACTED:*]\`; the CLI handles these deterministically.
-- Model-directed redaction is a rare fallback only for semantic private data the
-  detectors cannot recognize, such as customer/personal data, confidential
-  business context, private internal URLs, or information the user explicitly
-  identifies as private. Do not proactively scan every turn.
-- Prefer the narrowest applicable command: \`assert redact last-tool-input\` or
-  \`assert redact last-tool-output\`. Use \`assert redact current-turn\` only when
-  essentially the whole turn is sensitive. Never repeat the sensitive value in
-  the command.
-
-Commands:
-- \`assert disable\` / \`assert enable\` — stop / resume capture entirely.
-- \`assert private\` / \`assert public\` — keep capturing locally but out of the
-  repo / resume writing into the repo (default is public).
-- \`assert sync\` — publish any local-only (private) sessions into \`.sessions/\`
-  and rebuild the local blame index. Run it after switching branches, un-stashing,
-  or going public if \`.sessions/\` looks out of sync with your changes.`;
-
-// An Agent Skill (SKILL.md) — an open standard adopted across coding agents
-// (Claude Code, Cursor, and others) — so one file serves any of them.
-export function skillMd(): string {
-  return `---
-name: assert
-description: Explains the .sessions/ directory created by Assert session capture. Use when a repository contains a .sessions/ directory or when staging or committing changes, so session files are kept and committed with the code.
----
-
-${AGENT_GUIDANCE}
-`;
 }
 
 // CamelCase config event name -> snake_case trust-state label. No session-end
