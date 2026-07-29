@@ -1,0 +1,21 @@
+README.md
+  s_28bef4aabb95e1::t_6d4fdd37004857 101,106,111,116,121
+assets/agents/pi.svg
+  s_28bef4aabb95e1::t_a81ac7ffb72d8f 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3907d9a2230201b1fd80e4a7fc26587726834f15",
+  "prompts": {},
+  "sessions": {
+    "s_28bef4aabb95e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "029d9d17-03bb-4eb2-9bed-fc38a6e21f04",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
