@@ -30,8 +30,13 @@ Capture AI agent sessions from any agentic coding tool as part of your repositor
 ## How It Works
 
 1. **Global hooks** are initialized in each agent's config directory.
-2. When an agent session starts, a new JSONL file is created in `.sessions/`.
-3. All events (prompts, tool calls, responses) are appended to the session file.
+2. As the agent works, every event (prompts, tool calls, responses) is captured
+   to a central store outside your repo.
+3. At each turn boundary, that turn's events are written into `.sessions/` as a
+   new JSONL file — one per turn, inside a per-session directory. Files already
+   written are never rewritten, so capture only ever adds to your working tree.
+4. A repo gets nothing until the agent changes a file in it, and a session
+   spanning several repos is written into each one it touched.
 
 ## Installation
 
