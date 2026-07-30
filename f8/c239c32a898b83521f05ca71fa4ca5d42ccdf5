@@ -1,0 +1,110 @@
+AGENTS.md
+  s_070e14f73d8430::t_e5a898b52b2bd1 21-26
+src/hooks/claude-code.ts
+  s_070e14f73d8430::t_410ffd4be35704 16-17,30
+  s_070e14f73d8430::t_9edb5e62a7c809 125
+  s_070e14f73d8430::t_27f0999218b280 146-151
+tests/sanitizer.test.ts
+  s_070e14f73d8430::t_fa7c79430801ee 45-71
+src/sanitizer.ts
+  s_070e14f73d8430::t_823135396a16a8 3-4
+  s_070e14f73d8430::t_3b2c531103dec3 36-44,49,54-73
+  s_070e14f73d8430::t_ed3dc8cd8505d7 98
+  s_070e14f73d8430::t_8bce44e1eb6b0c 126-129
+  s_070e14f73d8430::t_4d40b8a39da87b 108
+  s_070e14f73d8430::t_4d7a1946d2ec02 172-175
+  s_070e14f73d8430::t_d4197af0a04c4f 74
+src/transcript.ts
+  s_070e14f73d8430::t_40c18c70358af6 50-52
+  s_070e14f73d8430::t_31f9c64db50671 96-106
+  s_070e14f73d8430::t_b2bcf0b7494673 8
+src/schema.ts
+  s_070e14f73d8430::t_2077113eea36ce 96-97,99-104
+  s_070e14f73d8430::t_fdabdede0b8668 7-13,16-23,29
+  s_070e14f73d8430::t_5f798197d33c3c 249-268
+src/core.ts
+  s_070e14f73d8430::t_7f340efa65e074 12-15
+  s_070e14f73d8430::t_025876cbaf8618 42,44-48
+  s_070e14f73d8430::t_f5d22469475fac 200
+  s_070e14f73d8430::t_53841692c6e7d9 77-92
+  s_070e14f73d8430::t_577593286e46f9 114-118
+  s_070e14f73d8430::t_291436a0becd56 101,103,105,107-109
+src/hooks/pi.ts
+  s_070e14f73d8430::t_d68e5e293ab735 172-175
+  s_070e14f73d8430::t_0853183af5f5cd 28-29
+  s_070e14f73d8430::t_cd09f93cb73107 142-145
+  s_070e14f73d8430::t_08c9da78274f5e 43
+tests/tool-actions.test.ts
+  s_070e14f73d8430::t_862e33a1f3dc1c 101-120
+  s_070e14f73d8430::t_a5e57a2eb5391d 1-100,121-153
+tests/schema.test.ts
+  s_070e14f73d8430::t_27f5e126767564 78
+tsconfig.core.json
+  s_070e14f73d8430::t_cccf7cca27ea67 9
+tests/hooks/pi.test.ts
+  s_070e14f73d8430::t_f816514cd4f333 67,75,85-88,104
+src/cli.ts
+  s_070e14f73d8430::t_003825956169c8 509-516,518,521
+tests/hooks/codex.test.ts
+  s_070e14f73d8430::t_371e61ea1ed6ab 62-63,67,73,81-85
+src/tool-actions.ts
+  s_070e14f73d8430::t_32d1c11d070ffb 209-215,217-234,237-240,247,249-250
+  s_070e14f73d8430::t_955949fd345be1 1-208,216,235-236,241-246,248,251-257
+src/hooks/session-recorder.ts
+  s_070e14f73d8430::t_341c2fe6d37701 781-807
+  s_070e14f73d8430::t_b59bd304f5cda0 268
+  s_070e14f73d8430::t_644560a2c757db 1116
+  s_070e14f73d8430::t_ab411ded86701c 46,49
+  s_070e14f73d8430::t_cfca4a06835708 780
+README.md
+  s_070e14f73d8430::t_dbddd284813058 43-80
+  s_070e14f73d8430::t_64f30ad91001ea 13-14
+src/hooks/codex.ts
+  s_070e14f73d8430::t_48c21ae800f00e 150-157
+  s_070e14f73d8430::t_efcae57360f958 21-22,36
+  s_070e14f73d8430::t_8e4142a75f6b4a 126
+src/hooks/opencode.ts
+  s_070e14f73d8430::t_5f6ad2c5faaf18 29-30,44
+  s_070e14f73d8430::t_3e7612565de55b 175-178
+  s_070e14f73d8430::t_37cb1c213a98a8 145-148
+tests/core.test.ts
+  s_070e14f73d8430::t_ec66121723a757 182-250
+  s_070e14f73d8430::t_91a2e85f36b7e1 23-33,97,104,112,121,128,135,142
+package.json
+  s_070e14f73d8430::t_cccf7cca27ea67 45
+tests/hooks/claude-code.test.ts
+  s_070e14f73d8430::t_f6987c2641ce7e 79-84
+src/session-manager.ts
+  s_070e14f73d8430::t_920960e1baf0b5 204
+  s_070e14f73d8430::t_535a28678c51d6 25
+src/hooks/cursor.ts
+  s_070e14f73d8430::t_02930383fa345e 147
+  s_070e14f73d8430::t_06cd06f4a1deb4 168-171
+  s_070e14f73d8430::t_893278b915f3dd 19-20,34
+  s_070e14f73d8430::t_13ae40c864bf8c 74-76
+  s_070e14f73d8430::t_99e87dfa3d9edc 66-73,77-78
+tests/transcript.test.ts
+  s_070e14f73d8430::t_91a2e85f36b7e1 17,20,32,60,72,77,92,115,120
+  s_070e14f73d8430::t_b3571cade0cc81 134-136,138,141,144,147
+tests/hooks/opencode.test.ts
+  s_070e14f73d8430::t_d6819a1fe66425 14
+  s_070e14f73d8430::t_564fcf5b68a97b 83-86
+tests/hooks/cursor.test.ts
+  s_070e14f73d8430::t_4bc0132bc8e421 69-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.17",
+  "base_commit_sha": "f8c239c32a898b83521f05ca71fa4ca5d42ccdf5",
+  "prompts": {},
+  "sessions": {
+    "s_070e14f73d8430": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8acabe4c-52a4-4ec7-be38-9e051170611f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
