@@ -1,6 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
-import type { SessionEvent } from './schema';
+import type { SessionEvent, ToolCallEvent } from './schema';
+import { redactedToolAction } from './tool-actions';
 
 export type RedactionTarget = 'last-tool-input' | 'last-tool-output' | 'current-turn';
 export interface RedactionDirective {
@@ -32,16 +33,43 @@ function sanitizeString(value: string, gitRoot: string): string {
   return sanitized;
 }
 
+/** A path expressed relative to the repo being published into, POSIX-style.
+ * Left as-is when it points outside the repo. */
+function relativeToRepo(value: string, gitRoot: string): string {
+  const absolute = path.resolve(gitRoot, value.replaceAll('\\', '/'));
+  const relative = path.relative(gitRoot, absolute);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return value;
+  return relative.replaceAll(path.sep, '/');
+}
+
 function normalizeToolInput(input: Record<string, unknown>, gitRoot: string) {
   return Object.fromEntries(
     Object.entries(input).map(([key, value]) => {
       if (!FILE_PATH_KEYS.has(key) || typeof value !== 'string') return [key, value];
-      const absolute = path.resolve(gitRoot, value.replaceAll('\\', '/'));
-      const relative = path.relative(gitRoot, absolute);
-      if (relative.startsWith('..') || path.isAbsolute(relative)) return [key, value];
-      return [key, relative.replaceAll(path.sep, '/')];
+      return [key, relativeToRepo(value, gitRoot)];
     }),
   );
+}
+
+/**
+ * Publish-time normalization of a tool call: canonical paths become
+ * repo-relative here rather than at capture time, because a session can span
+ * repos and "which repo" is only unambiguous once we know which `.sessions/`
+ * this copy is going into.
+ */
+function normalizeToolCall(event: ToolCallEvent, gitRoot: string): ToolCallEvent {
+  return {
+    ...event,
+    ...(event.action?.paths?.length
+      ? {
+          action: {
+            ...event.action,
+            paths: event.action.paths.map((p) => relativeToRepo(p, gitRoot)),
+          },
+        }
+      : {}),
+    ...(event.input ? { input: normalizeToolInput(event.input, gitRoot) } : {}),
+  };
 }
 
 function sanitizeValue(value: unknown, gitRoot: string, key?: string): unknown {
@@ -67,9 +95,7 @@ export function sanitizeSessionEvents(
   directives: RedactionDirective[] = [],
 ): SessionEvent[] {
   const normalized = events.map((event) =>
-    event.type === 'tool_call'
-      ? { ...event, input: normalizeToolInput(event.input, gitRoot) }
-      : event,
+    event.type === 'tool_call' ? normalizeToolCall(event, gitRoot) : event,
   );
   const projected = normalized.map(
     (event) => sanitizeValue(event, gitRoot) as SessionEvent,
@@ -79,7 +105,7 @@ export function sanitizeSessionEvents(
       .filter(
         (event) =>
           event.type === 'tool_call' &&
-          JSON.stringify(event.input).includes('assert redact'),
+          JSON.stringify([event.action, event.input]).includes('assert redact'),
       )
       .map((event) => (event.type === 'tool_call' ? event.toolCallId : '')),
   );
@@ -97,7 +123,10 @@ export function sanitizeSessionEvents(
         ? publishableCalls[directive.toolOrdinal]
         : undefined);
     if (directive.target === 'last-tool-input') {
-      if (call?.type === 'tool_call') call.input = { redacted: '[REDACTED:AGENT]' };
+      if (call?.type === 'tool_call') {
+        call.action = redactedToolAction(call.action);
+        call.input = { redacted: '[REDACTED:AGENT]' };
+      }
     }
     if (directive.target === 'last-tool-output') {
       const result = projected.find(
@@ -140,7 +169,10 @@ export function sanitizeSessionEvents(
       if (!('turnId' in event) || !turnIds.has(event.turnId)) continue;
       if (event.type === 'assistant_text') event.text = '[REDACTED:AGENT]';
       if (event.type === 'assistant_reasoning') event.text = '[REDACTED:AGENT]';
-      if (event.type === 'tool_call') event.input = { redacted: '[REDACTED:AGENT]' };
+      if (event.type === 'tool_call') {
+        event.action = redactedToolAction(event.action);
+        event.input = { redacted: '[REDACTED:AGENT]' };
+      }
       if (event.type === 'tool_result') {
         event.output = '[REDACTED:AGENT]';
         event.error = event.error ? '[REDACTED:AGENT]' : undefined;

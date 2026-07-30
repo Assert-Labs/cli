@@ -9,7 +9,6 @@
  * preToolUse, postToolUse, beforeSubmitPrompt, afterAgentResponse, afterFileEdit.
  */
 
-import * as path from 'path';
 import {
   type SessionState,
   loadState,
@@ -17,7 +16,8 @@ import {
   startOrResumeSession,
   endSession,
   syncSession,
-  recordFileEdit,
+  recordActionFiles,
+  resolveActionPaths,
   writeEvent,
   findSessionIdForWorkspace,
   captureDisabled,
@@ -31,6 +31,7 @@ import {
   createTurnId,
   createToolCallId,
 } from '../schema';
+import { toolAction, type ToolAction } from '../tool-actions';
 
 const SOURCE = 'cursor';
 
@@ -60,6 +61,19 @@ interface CursorPrompt {
   sessionId?: string;
   workspaceRoot?: string;
   content?: string;
+}
+
+/**
+ * The canonical action for a Cursor tool event. Cursor's file hooks
+ * (`afterFileEdit`, and `preToolUse` for the built-in editor) carry the path at
+ * the top level instead of in `toolInput`, and may not name the tool at all —
+ * in Cursor that shape is always an edit of that file.
+ */
+function cursorAction(data: CursorToolUse): ToolAction {
+  const action = toolAction(SOURCE, data.toolName ?? '', data.toolInput ?? {});
+  if (!data.filePath || action.paths?.length) return action;
+  if (action.kind === 'other') return { kind: 'edit', paths: [data.filePath] };
+  return { ...action, paths: [data.filePath] };
 }
 
 /** Resolve the session id for a hook that may omit it. */
@@ -130,6 +144,7 @@ export function handlePreToolUse(data: CursorToolUse): void {
     turnId,
     toolCallId,
     toolName,
+    action: resolveActionPaths(cursorAction(data), state.cwd),
     input: data.toolInput || { filePath: data.filePath, editType: data.editType },
   };
   writeEvent(sessionId, event);
@@ -150,15 +165,10 @@ export function handlePostToolUse(data: CursorToolUse): void {
   const toolCallId = state.pendingToolCalls.get(key) || createToolCallId();
 
   // Track the edit against its own repo (multi-repo aware). Cursor may give an
-  // absolute or workspace-relative path.
-  let filesModified: string[] | undefined;
-  if (data.success && filePath) {
-    const absPath = path.isAbsolute(filePath) ? filePath : path.join(state.cwd, filePath);
-    const relativePath = recordFileEdit(state, absPath);
-    if (relativePath) {
-      filesModified = [relativePath];
-    }
-  }
+  // absolute or workspace-relative path; the canonical action resolves it.
+  const filesModified = data.success
+    ? recordActionFiles(state, cursorAction(data))
+    : undefined;
 
   const event: ToolResultEvent = {
     type: 'tool_result',

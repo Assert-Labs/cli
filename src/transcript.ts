@@ -5,6 +5,7 @@
  */
 
 import { type SessionEvent } from './schema';
+import { toolAction } from './tool-actions';
 import { createHash } from 'crypto';
 
 /** Normalize a raw model string to the models.dev convention (provider/model). */
@@ -46,6 +47,9 @@ export function normalizeClaudeTranscript(jsonl: string, sessionId: string): Ses
       continue;
     }
     const timestamp: string = o.timestamp || '';
+    // Every event we emit must carry a real timestamp (see isSessionEvent);
+    // a line without one can't be ordered, so it isn't an event we can use.
+    if (!timestamp || Number.isNaN(Date.parse(timestamp))) continue;
     const msg = o.message;
 
     if (o.type === 'user' && msg) {
@@ -89,7 +93,17 @@ export function normalizeClaudeTranscript(jsonl: string, sessionId: string): Ses
         } else if (b?.type === 'text') {
           events.push({ type: 'assistant_text', timestamp, sessionId, turnId, text: b.text ?? '' });
         } else if (b?.type === 'tool_use') {
-          events.push({ type: 'tool_call', timestamp, sessionId, turnId, toolCallId: b.id, toolName: b.name, input: b.input ?? {} });
+          const input = b.input ?? {};
+          events.push({
+            type: 'tool_call',
+            timestamp,
+            sessionId,
+            turnId,
+            toolCallId: b.id,
+            toolName: b.name,
+            action: toolAction('claude-code', b.name ?? '', input),
+            input,
+          });
         }
       }
     }

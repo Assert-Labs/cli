@@ -20,17 +20,17 @@ import {
 // A two-turn session: a planning turn (no code) then an "implement" turn that
 // edits a file — the shallow-prompt case ("now implement").
 const jsonl = [
-  { type: 'session_start', timestamp: 't0', sessionId: 's1', source: 'codex', cwd: '/x' },
-  { type: 'human_turn', timestamp: 't1', sessionId: 's1', turnId: 'p1', content: 'plan the feature' },
-  { type: 'assistant_turn_start', timestamp: 't2', sessionId: 's1', turnId: 'a1', model: 'm1', promptTurnId: 'p1' },
-  { type: 'assistant_reasoning', timestamp: 't2b', sessionId: 's1', turnId: 'a1', text: 'here is the plan' },
-  { type: 'human_turn', timestamp: 't3', sessionId: 's1', turnId: 'p2', content: 'now implement' },
-  { type: 'assistant_turn_start', timestamp: 't4', sessionId: 's1', turnId: 'a2', model: 'm2', promptTurnId: 'p2' },
-  { type: 'assistant_reasoning', timestamp: 't4b', sessionId: 's1', turnId: 'a2', text: 'implementing it' },
-  { type: 'tool_call', timestamp: 't4c', sessionId: 's1', turnId: 'a2', toolCallId: 'tc1', toolName: 'apply_patch', input: { file_path: 'x.ts' } },
-  { type: 'tool_result', timestamp: 't4d', sessionId: 's1', turnId: 'a2', toolCallId: 'tc1', output: 'ok' },
-  { type: 'assistant_text', timestamp: 't4e', sessionId: 's1', turnId: 'a2', text: 'done' },
-  { type: 'line_attribution', timestamp: 't5', sessionId: 's1', filePath: 'x.ts', lines: [{ hash: 'h1', source: 'agent', sessionId: 's1', turnId: 'a2', modelId: 'm2' }] },
+  { type: 'session_start', timestamp: '2026-07-20T10:00:00.000Z', sessionId: 's1', source: 'codex', cwd: '/x' },
+  { type: 'human_turn', timestamp: '2026-07-20T10:00:01.000Z', sessionId: 's1', turnId: 'p1', content: 'plan the feature' },
+  { type: 'assistant_turn_start', timestamp: '2026-07-20T10:00:02.000Z', sessionId: 's1', turnId: 'a1', model: 'm1', promptTurnId: 'p1' },
+  { type: 'assistant_reasoning', timestamp: '2026-07-20T10:00:02.100Z', sessionId: 's1', turnId: 'a1', text: 'here is the plan' },
+  { type: 'human_turn', timestamp: '2026-07-20T10:00:03.000Z', sessionId: 's1', turnId: 'p2', content: 'now implement' },
+  { type: 'assistant_turn_start', timestamp: '2026-07-20T10:00:04.000Z', sessionId: 's1', turnId: 'a2', model: 'm2', promptTurnId: 'p2' },
+  { type: 'assistant_reasoning', timestamp: '2026-07-20T10:00:04.100Z', sessionId: 's1', turnId: 'a2', text: 'implementing it' },
+  { type: 'tool_call', timestamp: '2026-07-20T10:00:04.200Z', sessionId: 's1', turnId: 'a2', toolCallId: 'tc1', toolName: 'apply_patch', input: { file_path: 'x.ts' } },
+  { type: 'tool_result', timestamp: '2026-07-20T10:00:04.300Z', sessionId: 's1', turnId: 'a2', toolCallId: 'tc1', output: 'ok' },
+  { type: 'assistant_text', timestamp: '2026-07-20T10:00:04.400Z', sessionId: 's1', turnId: 'a2', text: 'done' },
+  { type: 'line_attribution', timestamp: '2026-07-20T10:00:05.000Z', sessionId: 's1', filePath: 'x.ts', lines: [{ hash: 'h1', source: 'agent', sessionId: 's1', turnId: 'a2', modelId: 'm2' }] },
 ].map((e) => JSON.stringify(e)).join('\n');
 
 describe('core', () => {
@@ -94,14 +94,14 @@ describe('core', () => {
       [
         {
           type: 'human_turn',
-          timestamp: 't1',
+          timestamp: '2026-07-20T10:00:01.000Z',
           sessionId: 's1',
           turnId: 'p1',
           content: 'create a file',
         },
         {
           type: 'assistant_turn_start',
-          timestamp: 't2',
+          timestamp: '2026-07-20T10:00:02.000Z',
           sessionId: 's1',
           turnId: 'tool-block',
           promptTurnId: 'p1',
@@ -109,7 +109,7 @@ describe('core', () => {
         },
         {
           type: 'tool_call',
-          timestamp: 't2',
+          timestamp: '2026-07-20T10:00:02.000Z',
           sessionId: 's1',
           turnId: 'tool-block',
           toolCallId: 'write-1',
@@ -118,28 +118,28 @@ describe('core', () => {
         },
         {
           type: 'human_turn',
-          timestamp: 't1',
+          timestamp: '2026-07-20T10:00:01.000Z',
           sessionId: 's1',
           turnId: 'p1-new-normalizer',
           content: 'create a file',
         },
         {
           type: 'assistant_turn_start',
-          timestamp: 't3',
+          timestamp: '2026-07-20T10:00:03.000Z',
           sessionId: 's1',
           turnId: 'summary-block',
           promptTurnId: 'p1-new-normalizer',
         },
         {
           type: 'assistant_text',
-          timestamp: 't3',
+          timestamp: '2026-07-20T10:00:03.000Z',
           sessionId: 's1',
           turnId: 'summary-block',
           text: 'Created the file.',
         },
         {
           type: 'line_attribution',
-          timestamp: 't4',
+          timestamp: '2026-07-20T10:00:04.000Z',
           sessionId: 's1',
           filePath: 'dummy.txt',
           lines: [
@@ -177,5 +177,74 @@ describe('core', () => {
         session,
       ),
     ).toHaveLength(2);
+  });
+});
+
+describe('parseSession event guarantees', () => {
+  const event = (extra: Record<string, unknown>) =>
+    JSON.stringify({ sessionId: 's1', timestamp: '2026-07-20T10:00:00.000Z', ...extra });
+
+  it('surfaces the canonical action a capture recorded', () => {
+    const session = parseSession(
+      [
+        event({ type: 'session_start', source: 'opencode', cwd: '/x' }),
+        event({ type: 'assistant_turn_start', turnId: 'a1' }),
+        event({
+          type: 'tool_call',
+          turnId: 'a1',
+          toolCallId: 'tc1',
+          toolName: 'bash',
+          action: { kind: 'command', command: 'pnpm test' },
+          input: { command: 'pnpm test', timeout: 120 },
+        }),
+      ].join('\n'),
+    );
+
+    expect(session.turns[0].toolCalls[0].action).toEqual({
+      kind: 'command',
+      command: 'pnpm test',
+    });
+  });
+
+  it('derives the action for a capture written before the format carried one', () => {
+    const session = parseSession(
+      [
+        event({ type: 'session_start', source: 'claude-code', cwd: '/x' }),
+        event({ type: 'assistant_turn_start', turnId: 'a1' }),
+        event({
+          type: 'tool_call',
+          turnId: 'a1',
+          toolCallId: 'tc1',
+          toolName: 'Read',
+          input: { file_path: 'src/a.ts' },
+        }),
+      ].join('\n'),
+    );
+
+    expect(session.turns[0].toolCalls[0].action).toEqual({
+      kind: 'read',
+      paths: ['src/a.ts'],
+    });
+  });
+
+  it('drops events that lack a usable timestamp instead of ordering them arbitrarily', () => {
+    const session = parseSession(
+      [
+        event({ type: 'session_start', source: 'codex', cwd: '/x' }),
+        JSON.stringify({ type: 'human_turn', sessionId: 's1', turnId: 'p1', content: 'no time' }),
+        JSON.stringify({
+          type: 'human_turn',
+          sessionId: 's1',
+          timestamp: 'not-a-date',
+          turnId: 'p2',
+          content: 'bad time',
+        }),
+        event({ type: 'human_turn', turnId: 'p3', content: 'real time' }),
+      ].join('\n'),
+    );
+
+    expect(
+      session.events.filter((e) => e.type === 'human_turn').map((e) => e.turnId),
+    ).toEqual(['p3']);
   });
 });

@@ -19,7 +19,6 @@
  * best-effort close.
  */
 
-import * as path from 'path';
 import {
   type SessionState,
   loadState,
@@ -27,7 +26,8 @@ import {
   startOrResumeSession,
   endSession,
   syncSession,
-  recordFileEdit,
+  recordActionFiles,
+  resolveActionPaths,
   writeEvent,
   captureDisabled,
 } from './session-recorder';
@@ -41,6 +41,7 @@ import {
   createTurnId,
   createToolCallId,
 } from '../schema';
+import { toolAction } from '../tool-actions';
 
 const SOURCE = 'opencode';
 
@@ -76,44 +77,6 @@ interface OpenCodeAssistantText extends OpenCodeBase {
  * resumed session) may surface a prompt/tool event first — so lazily start it
  * from the cwd rather than dropping the event.
  */
-// Headers in an apply_patch blob that name a file. OpenCode's primary edit tool
-// passes the whole patch as `patchText` with no discrete file_path, so we read
-// the touched paths from these markers (mirrors the same tool in other agents).
-const APPLY_PATCH_FILE_PREFIXES = [
-  '*** Add File: ',
-  '*** Update File: ',
-  '*** Delete File: ',
-  '*** Move to: ',
-];
-
-/** File paths named in an apply_patch `patchText` blob. */
-export function extractApplyPatchPaths(patchText: string): string[] {
-  const out: string[] = [];
-  for (const line of patchText.split('\n')) {
-    const trimmed = line.trim();
-    for (const prefix of APPLY_PATCH_FILE_PREFIXES) {
-      if (trimmed.startsWith(prefix)) {
-        const p = trimmed.slice(prefix.length).trim().replace(/^['"]|['"]$/g, '');
-        if (p) out.push(p);
-      }
-    }
-  }
-  return out;
-}
-
-/** The file paths a tool touched, from a discrete path field or an apply_patch blob. */
-function toolFilePaths(input: Record<string, unknown>): string[] {
-  const direct =
-    (input.file_path as string) ||
-    (input.path as string) ||
-    (input.filePath as string) ||
-    (input.filename as string) ||
-    undefined;
-  if (direct) return [direct];
-  if (typeof input.patchText === 'string') return extractApplyPatchPaths(input.patchText);
-  return [];
-}
-
 function ensureSession(sessionId: string, cwd: string): SessionState | null {
   const existing = loadState(sessionId, SOURCE);
   if (existing) return existing;
@@ -179,6 +142,10 @@ export function handlePreToolUse(data: OpenCodePreToolUse): void {
     turnId,
     toolCallId,
     toolName: data.tool_name,
+    action: resolveActionPaths(
+      toolAction(SOURCE, data.tool_name, data.tool_input),
+      state.cwd,
+    ),
     input: data.tool_input,
   };
   writeEvent(data.session_id, event);
@@ -205,14 +172,10 @@ export function handlePostToolUse(data: OpenCodePostToolUse): void {
 
   // Best-effort: surface the edited file(s) so their repo is tracked (multi-repo
   // aware). Attribution itself comes from the git diff, not this field.
-  let filesModified: string[] | undefined;
-  for (const filePath of toolFilePaths(data.tool_input ?? {})) {
-    const absPath = path.isAbsolute(filePath) ? filePath : path.join(state.cwd, filePath);
-    const relativePath = recordFileEdit(state, absPath);
-    if (relativePath) {
-      (filesModified ??= []).push(relativePath);
-    }
-  }
+  const filesModified = recordActionFiles(
+    state,
+    toolAction(SOURCE, data.tool_name, data.tool_input ?? {}),
+  );
 
   const event: ToolResultEvent = {
     type: 'tool_result',

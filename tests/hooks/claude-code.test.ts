@@ -76,6 +76,12 @@ describe('claude-code hook adapter', () => {
     const events = readEvents('s1');
     expect(events.find((e) => e.type === 'human_turn')?.content).toBe('add a feature');
     expect(events.find((e) => e.type === 'tool_call')?.toolName).toBe('Edit');
+    // Canonical, agent-independent view of the call, with the path made
+    // repo-relative on the way into `.sessions/`.
+    expect(events.find((e) => e.type === 'tool_call')?.action).toEqual({
+      kind: 'edit',
+      paths: ['feature.ts'],
+    });
     expect(events.find((e) => e.type === 'assistant_text')?.text).toBe('Done.');
 
     const attr = events.find((e) => e.type === 'attribution');

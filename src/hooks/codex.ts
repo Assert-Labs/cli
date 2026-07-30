@@ -12,14 +12,14 @@
  * (which fires per turn) is where we finalize attribution.
  */
 
-import * as path from 'path';
 import {
   type SessionState,
   loadState,
   saveState,
   startOrResumeSession,
   syncSession,
-  recordFileEdit,
+  recordActionFiles,
+  resolveActionPaths,
   writeEvent,
   captureDisabled,
 } from './session-recorder';
@@ -33,6 +33,7 @@ import {
   createTurnId,
   createToolCallId,
 } from '../schema';
+import { toolAction } from '../tool-actions';
 
 const SOURCE = 'codex';
 
@@ -122,6 +123,7 @@ export function handlePreToolUse(data: CodexPreToolUse): void {
     turnId,
     toolCallId,
     toolName: tool_name,
+    action: resolveActionPaths(toolAction(SOURCE, tool_name, tool_input), state.cwd),
     input: tool_input,
   };
   writeEvent(session_id, event);
@@ -145,23 +147,14 @@ export function handlePostToolUse(data: CodexPostToolUse): void {
       : (response.stdout as string) || (response.output as string) || undefined;
   const tool_error = (response.stderr as string) || (response.error as string) || undefined;
 
-  // Best-effort: surface the edited file so its repo is tracked (multi-repo
-  // aware). Attribution itself comes from the git diff, not this field, so an
-  // unknown tool shape just means slightly less transcript metadata.
-  let filesModified: string[] | undefined;
-  const filePath =
-    (tool_input.file_path as string) ||
-    (tool_input.path as string) ||
-    (tool_input.file as string) ||
-    undefined;
-  if (filePath) {
-    // Codex may give an absolute or cwd-relative path; resolve before tracking.
-    const absPath = path.isAbsolute(filePath) ? filePath : path.join(state.cwd, filePath);
-    const relativePath = recordFileEdit(state, absPath);
-    if (relativePath) {
-      filesModified = [relativePath];
-    }
-  }
+  // Best-effort: surface the edited files so their repos are tracked
+  // (multi-repo aware) from the canonical action's paths. Attribution itself
+  // comes from the git diff, not this field, so an unregistered tool just
+  // means slightly less transcript metadata.
+  const filesModified = recordActionFiles(
+    state,
+    toolAction(SOURCE, tool_name, tool_input),
+  );
 
   const event: ToolResultEvent = {
     type: 'tool_result',

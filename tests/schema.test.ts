@@ -75,6 +75,7 @@ describe('schema utilities', () => {
         turnId: 'turn-1',
         toolCallId: 'tc-123',
         toolName: 'Read',
+        action: { kind: 'read', paths: ['/path/to/file.ts'] },
         input: { file_path: '/path/to/file.ts' },
       };
 

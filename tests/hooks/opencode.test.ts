@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
-import { processHook, extractApplyPatchPaths } from '../../src/hooks/opencode';
+import { processHook } from '../../src/hooks/opencode';
 import { loadState, setCaptureDisabled, blameFile, readSessionFile } from '../../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import { hashLine } from '../../src/line-attribution';
@@ -80,6 +80,10 @@ describe('opencode hook adapter', () => {
     const events = readEvents('s1');
     expect(events.find((e) => e.type === 'human_turn')?.content).toBe('add a feature');
     expect(events.find((e) => e.type === 'tool_call')?.toolName).toBe('edit');
+    expect(events.find((e) => e.type === 'tool_call')?.action).toEqual({
+      kind: 'edit',
+      paths: ['feature.ts'],
+    });
     expect(events.find((e) => e.type === 'assistant_text')?.text).toBe('Done.');
     expect(events.find((e) => e.type === 'assistant_turn_start')?.model).toBe('claude-opus-4');
 
@@ -89,19 +93,6 @@ describe('opencode hook adapter', () => {
     expect(attr.filePath).toBe('feature.ts');
     expect(attr.contributor).toEqual({ type: 'ai', agent: 'opencode', modelId: 'claude-opus-4' });
     expect(attr.lineHashes).toContain(hashLine('export const x = 1;'));
-  });
-
-  it('extracts touched files from an apply_patch blob', () => {
-    const patch = [
-      '*** Begin Patch',
-      '*** Add File: dummy.txt',
-      '+hello',
-      '*** Update File: src/x.ts',
-      '@@',
-      '+const x = 1;',
-      '*** End Patch',
-    ].join('\n');
-    expect(extractApplyPatchPaths(patch)).toEqual(['dummy.txt', 'src/x.ts']);
   });
 
   it('tracks apply_patch edits (patchText, no discrete file_path)', async () => {

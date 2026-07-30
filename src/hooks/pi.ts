@@ -18,7 +18,6 @@
  * attribution per turn.
  */
 
-import * as path from 'path';
 import {
   type SessionState,
   loadState,
@@ -26,7 +25,8 @@ import {
   startOrResumeSession,
   endSession,
   syncSession,
-  recordFileEdit,
+  recordActionFiles,
+  resolveActionPaths,
   writeEvent,
   captureDisabled,
 } from './session-recorder';
@@ -40,6 +40,7 @@ import {
   createTurnId,
   createToolCallId,
 } from '../schema';
+import { toolAction } from '../tool-actions';
 
 const SOURCE = 'pi';
 
@@ -67,17 +68,6 @@ interface PiPostToolUse extends PiPreToolUse {
 
 interface PiAssistantText extends PiBase {
   text: string;
-}
-
-/** The file paths a tool touched, from whichever path field it carries. */
-function toolFilePaths(input: Record<string, unknown>): string[] {
-  const direct =
-    (input.file_path as string) ||
-    (input.path as string) ||
-    (input.filePath as string) ||
-    (input.filename as string) ||
-    undefined;
-  return direct ? [direct] : [];
 }
 
 /**
@@ -149,6 +139,10 @@ export function handlePreToolUse(data: PiPreToolUse): void {
     turnId,
     toolCallId,
     toolName: data.tool_name,
+    action: resolveActionPaths(
+      toolAction(SOURCE, data.tool_name, data.tool_input),
+      state.cwd,
+    ),
     input: data.tool_input,
   };
   writeEvent(data.session_id, event);
@@ -175,14 +169,10 @@ export function handlePostToolUse(data: PiPostToolUse): void {
 
   // Best-effort: surface the edited file(s) so their repo is tracked (multi-repo
   // aware). Attribution itself comes from the git diff, not this field.
-  let filesModified: string[] | undefined;
-  for (const filePath of toolFilePaths(data.tool_input ?? {})) {
-    const absPath = path.isAbsolute(filePath) ? filePath : path.join(state.cwd, filePath);
-    const relativePath = recordFileEdit(state, absPath);
-    if (relativePath) {
-      (filesModified ??= []).push(relativePath);
-    }
-  }
+  const filesModified = recordActionFiles(
+    state,
+    toolAction(SOURCE, data.tool_name, data.tool_input ?? {}),
+  );
 
   const event: ToolResultEvent = {
     type: 'tool_result',

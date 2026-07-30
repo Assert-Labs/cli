@@ -13,7 +13,8 @@ import {
   startOrResumeSession,
   endSession,
   syncSession,
-  recordFileEdit,
+  recordActionFiles,
+  resolveActionPaths,
   writeEvent,
   captureDisabled,
 } from './session-recorder';
@@ -26,6 +27,7 @@ import {
   createTurnId,
   createToolCallId,
 } from '../schema';
+import { toolAction } from '../tool-actions';
 
 const SOURCE = 'claude-code';
 
@@ -120,6 +122,7 @@ export function handlePreToolUse(data: ClaudeCodePreToolUse): void {
     turnId,
     toolCallId,
     toolName: tool_name,
+    action: resolveActionPaths(toolAction(SOURCE, tool_name, tool_input), state.cwd),
     input: tool_input,
   };
   writeEvent(session_id, event);
@@ -140,15 +143,12 @@ export function handlePostToolUse(data: ClaudeCodePostToolUse): void {
   const tool_output = (tool_response.stdout as string) || undefined;
   const tool_error = (tool_response.stderr as string) || undefined;
 
-  // Resolve the edited file's repo and track it (multi-repo aware).
-  let filesModified: string[] | undefined;
-  const filePath = tool_input.file_path as string | undefined;
-  if (filePath) {
-    const relativePath = recordFileEdit(state, filePath);
-    if (relativePath) {
-      filesModified = [relativePath];
-    }
-  }
+  // Resolve the edited files' repos and track them (multi-repo aware). The
+  // canonical action already knows which paths this tool touched.
+  const filesModified = recordActionFiles(
+    state,
+    toolAction(SOURCE, tool_name, tool_input),
+  );
 
   const event: ToolResultEvent = {
     type: 'tool_result',

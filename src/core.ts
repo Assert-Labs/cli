@@ -9,7 +9,10 @@
  * associating. Exported at `@assertlabs/cli/core`.
  */
 
-import type { SessionEvent, SessionSource } from './schema';
+import { isSessionEvent, type SessionEvent, type SessionSource } from './schema';
+import { toolAction, type ToolAction } from './tool-actions';
+
+export type { ToolAction, ToolActionKind } from './tool-actions';
 
 /** One line of blame: its content plus who authored it. */
 export interface BlameLine {
@@ -36,8 +39,13 @@ export interface ReasoningStep {
 
 export interface ToolCall {
   toolCallId: string;
+  /** The agent's own name for the tool — a label, not a discriminator. */
   name: string;
-  input: unknown;
+  /** What the call did, in the canonical cross-agent vocabulary. Switch on
+   * `action.kind`; don't inspect `name` or `input`. */
+  action: ToolAction;
+  /** The agent's raw input, if the capture kept it. Debugging only. */
+  input?: unknown;
   output?: string;
   error?: string;
   timestamp: string;
@@ -66,6 +74,22 @@ export interface Session {
   turnAliases?: Record<string, string>; // native assistant id -> logical prompt turn id
 }
 
+/**
+ * The canonical action for a captured tool call.
+ *
+ * Captures written before format v4 predate `tool_call.action` and carry only
+ * the agent's raw input. Deriving it here — once, from the same per-agent maps
+ * the capture adapters use — is the *only* place old shapes are interpreted,
+ * so consumers see one format regardless of a capture's age. Delete this
+ * fallback when v3 captures are no longer in circulation.
+ */
+function callAction(
+  event: Extract<SessionEvent, { type: 'tool_call' }>,
+  source: SessionSource,
+): ToolAction {
+  return event.action ?? toolAction(source, event.toolName, event.input ?? {});
+}
+
 /** Parse a session `.jsonl` (transcript, plus attribution when present) into the
  * normalized model. Prompts are linked by `assistant_turn_start.promptTurnId`,
  * so no ordering heuristic is needed. */
@@ -74,16 +98,24 @@ export function parseSession(jsonl: string): Session {
   for (const line of jsonl.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    let parsed: unknown;
     try {
-      events.push(JSON.parse(trimmed) as SessionEvent);
+      parsed = JSON.parse(trimmed);
     } catch {
-      /* skip malformed lines */
+      continue; // malformed line
     }
+    // Enforce the schema's guarantees at the boundary so everything past this
+    // point can rely on them (notably: every event has a real timestamp).
+    if (isSessionEvent(parsed)) events.push(parsed);
   }
   events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   let sessionId = '';
-  let source: SessionSource = 'unknown';
+  // Resolved up front: a tool call's canonical action may have to be derived
+  // from the producing agent (see `callAction`), and session_start doesn't
+  // always sort first across independently-timestamped continuation files.
+  const source: SessionSource =
+    events.find((event) => event.type === 'session_start')?.source ?? 'unknown';
   const prompts = new Map<string, Prompt>();
   const promptRef = new Map<string, string>(); // assistant turnId -> prompt turnId
   const turns = new Map<string, Turn>();
@@ -137,8 +169,6 @@ export function parseSession(jsonl: string): Session {
     if (ev.sessionId && !sessionId) sessionId = ev.sessionId;
     switch (ev.type) {
       case 'session_start':
-        source = ev.source;
-        break;
       case 'human_turn':
         break;
       case 'assistant_turn_start': {
@@ -167,6 +197,7 @@ export function parseSession(jsonl: string): Session {
           t.toolCalls.push({
             toolCallId: ev.toolCallId,
             name: ev.toolName,
+            action: callAction(ev, source),
             input: ev.input,
             timestamp: ev.timestamp,
           });

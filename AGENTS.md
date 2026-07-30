@@ -18,6 +18,12 @@ context, contribution process, and security policy, see
 - **Match the surrounding code.** Check neighboring files for naming, structure,
   and comment style before introducing your own. Prefer the existing pattern
   over a new one.
+- **The session format is a contract.** Consumers read one schema whatever agent
+  produced a capture. Agent-specific shapes — tool names, input keys, patch
+  blobs — are resolved in the agent's own adapter (`src/hooks/*.ts` plus its map
+  in `src/tool-actions.ts`), never pushed onto a reader. Adding an agent, or a
+  tool for an existing one, means extending that map: if a consumer would have
+  to check two property names, the mapping is in the wrong place.
 
 ## Committing
 

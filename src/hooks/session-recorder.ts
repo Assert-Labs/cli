@@ -43,8 +43,10 @@ import {
   type SessionEndEvent,
   type LineOwnership,
   type LineAttributionEvent,
+  SESSION_FORMAT_VERSION,
   serializeSessionEvent,
 } from '../schema';
+import { type ToolAction } from '../tool-actions';
 import { normalizeClaudeTranscript } from '../transcript';
 import {
   sanitizeSessionJsonl,
@@ -263,7 +265,7 @@ export function addRedactionDirective(
       .filter(
         (event) =>
           event.type === 'tool_call' &&
-          JSON.stringify(event.input).includes('assert redact'),
+          JSON.stringify([event.action, event.input]).includes('assert redact'),
       )
       .map((event) => (event.type === 'tool_call' ? event.toolCallId : '')),
   );
@@ -776,6 +778,34 @@ export function recordFileEdit(state: SessionState, filePath: string): string | 
 }
 
 /**
+ * Resolve a canonical action's paths against the session cwd, so they're
+ * absolute however the agent expressed them. The sanitizer makes them
+ * repo-relative again when publishing into each repo's `.sessions/`, which is
+ * the only point where "which repo" is unambiguous for a multi-repo session.
+ */
+export function resolveActionPaths(action: ToolAction, cwd: string): ToolAction {
+  if (!action.paths?.length) return action;
+  return {
+    ...action,
+    paths: action.paths.map((p) => (path.isAbsolute(p) ? p : path.join(cwd, p))),
+  };
+}
+
+/** Record every file a canonical action touched; returns their repo-relative
+ * paths for `tool_result.filesModified`. */
+export function recordActionFiles(
+  state: SessionState,
+  action: ToolAction,
+): string[] | undefined {
+  let modified: string[] | undefined;
+  for (const filePath of resolveActionPaths(action, state.cwd).paths ?? []) {
+    const relativePath = recordFileEdit(state, filePath);
+    if (relativePath) (modified ??= []).push(relativePath);
+  }
+  return modified;
+}
+
+/**
  * Begin a session: write the session_start event, initialize state, and (if the
  * launch cwd is itself a repo) start tracking it. Returns the new state.
  */
@@ -1083,7 +1113,7 @@ function syncRepo(
         sessionId: state.sessionId,
         source: state.source,
         createdAt: state.createdAt,
-        formatVersion: 3,
+        formatVersion: SESSION_FORMAT_VERSION,
         privacyProfile: 'public-v1',
       };
       fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);

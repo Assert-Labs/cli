@@ -42,6 +42,33 @@ describe('session sanitizer', () => {
     expect(event.input.command).toBe('read $REPO/src/a.ts');
   });
 
+  it('makes canonical action paths relative to the repo being published into', () => {
+    const jsonl = JSON.stringify({
+      type: 'tool_call', timestamp: 't1', sessionId: 's1', turnId: 'a1',
+      toolCallId: 'tc1', toolName: 'Edit',
+      action: { kind: 'edit', paths: ['/repo/src/a.ts', '/elsewhere/c.ts'] },
+      input: { file_path: '/repo/src/a.ts' },
+    });
+    const event = JSON.parse(sanitizeSessionJsonl(jsonl, '/repo'));
+    // Outside the repo it stays absolute (sanitized), so it can't masquerade
+    // as a path in this repo.
+    expect(event.action).toEqual({ kind: 'edit', paths: ['src/a.ts', '/elsewhere/c.ts'] });
+  });
+
+  it('reduces a redacted call to its kind, leaking no canonical detail', () => {
+    const jsonl = JSON.stringify({
+      type: 'tool_call', timestamp: 't1', sessionId: 's1', turnId: 'a1',
+      toolCallId: 'tc1', toolName: 'Bash',
+      action: { kind: 'command', command: 'deploy --token=hunter2' },
+      input: { command: 'deploy --token=hunter2' },
+    });
+    const output = sanitizeSessionJsonl(jsonl, '/repo', [
+      { target: 'last-tool-input', toolCallId: 'tc1' },
+    ]);
+    expect(JSON.parse(output).action).toEqual({ kind: 'command' });
+    expect(output).not.toContain('hunter2');
+  });
+
   it('applies model-directed field redaction', () => {
     const jsonl = [
       JSON.stringify({

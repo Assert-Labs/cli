@@ -14,10 +14,10 @@ describe('normalizeModelId', () => {
 describe('normalizeClaudeTranscript', () => {
   const lines = [
     { type: 'file-history-snapshot', snapshot: {} },
-    { type: 'user', timestamp: 't1', message: { role: 'user', content: 'fix the bug' } },
+    { type: 'user', timestamp: '2026-07-20T10:00:01.000Z', message: { role: 'user', content: 'fix the bug' } },
     {
       type: 'assistant',
-      timestamp: 't2',
+      timestamp: '2026-07-20T10:00:02.000Z',
       message: {
         id: 'turn-1',
         model: 'claude-opus-4-5-20251101',
@@ -29,7 +29,7 @@ describe('normalizeClaudeTranscript', () => {
       },
     },
     { type: 'progress', data: {} },
-    { type: 'user', timestamp: 't3', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tc-1', content: 'done' }] } },
+    { type: 'user', timestamp: '2026-07-20T10:00:03.000Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tc-1', content: 'done' }] } },
   ];
   const events = normalizeClaudeTranscript(lines.map((l) => JSON.stringify(l)).join('\n'), 's1');
 
@@ -57,7 +57,7 @@ describe('normalizeClaudeTranscript', () => {
     const initial = lines.slice(0, 3).map((line) => JSON.stringify(line)).join('\n');
     const first = normalizeClaudeTranscript(initial, 's1');
     const second = normalizeClaudeTranscript(
-      `${initial}\n${JSON.stringify({ type: 'assistant', timestamp: 't4', message: { id: 'turn-2', content: [] } })}`,
+      `${initial}\n${JSON.stringify({ type: 'assistant', timestamp: '2026-07-20T10:00:04.000Z', message: { id: 'turn-2', content: [] } })}`,
       's1',
     );
     expect(first.find((event) => event.type === 'human_turn')?.turnId).toBe(
@@ -69,12 +69,12 @@ describe('normalizeClaudeTranscript', () => {
     const transcript = [
       {
         type: 'user',
-        timestamp: 't1',
+        timestamp: '2026-07-20T10:00:01.000Z',
         message: { role: 'user', content: 'create a file' },
       },
       {
         type: 'assistant',
-        timestamp: 't2',
+        timestamp: '2026-07-20T10:00:02.000Z',
         message: {
           id: 'tool-block',
           content: [
@@ -89,7 +89,7 @@ describe('normalizeClaudeTranscript', () => {
       },
       {
         type: 'assistant',
-        timestamp: 't3',
+        timestamp: '2026-07-20T10:00:03.000Z',
         message: {
           id: 'summary-block',
           content: [{ type: 'text', text: 'Created the file.' }],
@@ -112,12 +112,12 @@ describe('normalizeClaudeTranscript', () => {
     const transcript = [
       {
         type: 'user',
-        timestamp: 't1',
+        timestamp: '2026-07-20T10:00:01.000Z',
         message: { role: 'user', content: 'help' },
       },
       {
         type: 'assistant',
-        timestamp: 't2',
+        timestamp: '2026-07-20T10:00:02.000Z',
         message: { content: [{ type: 'text', text: 'done' }] },
       },
     ]
@@ -131,15 +131,20 @@ describe('normalizeClaudeTranscript', () => {
   });
 
   it('keeps repeated metadata-free messages as distinct logical turns', () => {
+    // No uuid, no message id, and the same timestamp and text throughout —
+    // position in the transcript is the only thing telling these apart.
+    const at = '2026-07-20T10:00:00.000Z';
     const transcript = [
-      { type: 'user', message: { role: 'user', content: 'repeat' } },
+      { type: 'user', timestamp: at, message: { role: 'user', content: 'repeat' } },
       {
         type: 'assistant',
+        timestamp: at,
         message: { content: [{ type: 'text', text: 'same' }] },
       },
-      { type: 'user', message: { role: 'user', content: 'repeat' } },
+      { type: 'user', timestamp: at, message: { role: 'user', content: 'repeat' } },
       {
         type: 'assistant',
+        timestamp: at,
         message: { content: [{ type: 'text', text: 'same' }] },
       },
     ]

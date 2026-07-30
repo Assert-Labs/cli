@@ -64,7 +64,7 @@ describe('pi hook adapter', () => {
     await hook('UserPromptSubmit', { prompt: 'add a feature', model: 'gpt-5.6-sol', provider: 'pi' });
     await hook('PreToolUse', {
       tool_name: 'write',
-      tool_input: { file_path: 'feature.ts' },
+      tool_input: { path: 'feature.ts' },
       call_id: 'c1',
       model: 'gpt-5.6-sol',
       provider: 'pi',
@@ -72,7 +72,7 @@ describe('pi hook adapter', () => {
     write('feature.ts', 'export const x = 1;\n');
     await hook('PostToolUse', {
       tool_name: 'write',
-      tool_input: { file_path: 'feature.ts' },
+      tool_input: { path: 'feature.ts' },
       tool_response: { output: 'ok' },
       call_id: 'c1',
     });
@@ -82,6 +82,10 @@ describe('pi hook adapter', () => {
     const events = readEvents('s1');
     expect(events.find((e) => e.type === 'human_turn')?.content).toBe('add a feature');
     expect(events.find((e) => e.type === 'tool_call')?.toolName).toBe('write');
+    expect(events.find((e) => e.type === 'tool_call')?.action).toEqual({
+      kind: 'write',
+      paths: ['feature.ts'],
+    });
     expect(events.find((e) => e.type === 'assistant_text')?.text).toBe('Done.');
     expect(events.find((e) => e.type === 'assistant_turn_start')?.model).toBe('gpt-5.6-sol');
 
@@ -97,7 +101,7 @@ describe('pi hook adapter', () => {
     await hook('UserPromptSubmit', { prompt: 'add a feature', model: 'gpt-5.6-sol' });
     await hook('PreToolUse', {
       tool_name: 'write',
-      tool_input: { file_path: 'feature.ts' },
+      tool_input: { path: 'feature.ts' },
       call_id: 'c1',
       model: 'gpt-5.6-sol',
     });

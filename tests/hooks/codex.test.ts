@@ -59,16 +59,18 @@ describe('codex hook adapter', () => {
     await hook('SessionStart', {});
     expect(loadState('s1', 'codex')).not.toBeNull();
 
+    // Codex passes the whole patch under `command` — no discrete file path.
+    const patch = '*** Begin Patch\n*** Add File: feature.ts\n+export const x = 1;\n*** End Patch\n';
     await hook('UserPromptSubmit', { prompt: 'add a feature' });
     await hook('PreToolUse', {
       tool_name: 'apply_patch',
-      tool_input: { file_path: 'feature.ts' },
+      tool_input: { command: patch },
       model: 'gpt-5-codex',
     });
     write('feature.ts', 'export const x = 1;\n');
     await hook('PostToolUse', {
       tool_name: 'apply_patch',
-      tool_input: { file_path: 'feature.ts' },
+      tool_input: { command: patch },
       tool_response: { output: 'ok' },
     });
     await hook('Stop', { last_assistant_message: 'Done.' });
@@ -76,6 +78,11 @@ describe('codex hook adapter', () => {
     const events = readEvents('s1');
     expect(events.find((e) => e.type === 'human_turn')?.content).toBe('add a feature');
     expect(events.find((e) => e.type === 'tool_call')?.toolName).toBe('apply_patch');
+    expect(events.find((e) => e.type === 'tool_call')?.action).toEqual({
+      kind: 'edit',
+      paths: ['feature.ts'],
+    });
+    expect(events.find((e) => e.type === 'tool_result')?.filesModified).toEqual(['feature.ts']);
     expect(events.find((e) => e.type === 'assistant_text')?.text).toBe('Done.');
     expect(events.find((e) => e.type === 'assistant_turn_start')?.model).toBe('gpt-5-codex');
 

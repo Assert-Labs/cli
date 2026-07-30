@@ -506,11 +506,19 @@ async function cmdShow(sessionId: string): Promise<void> {
       case 'assistant_turn_end':
         console.log(`${time} [assistant_end]`);
         break;
-      case 'tool_call':
+      case 'tool_call': {
+        const action = event.action;
+        const subject =
+          action?.command ??
+          action?.url ??
+          action?.query ??
+          action?.paths?.join(', ') ??
+          '';
         console.log(
-          `${time} [tool_call] ${event.toolName}(${JSON.stringify(event.input).substring(0, 40)}...)`,
+          `${time} [tool_call] ${action?.kind ?? 'other'} ${event.toolName}(${subject.substring(0, 40)})`,
         );
         break;
+      }
       case 'tool_result':
         const output = event.output || event.error || '';
         console.log(

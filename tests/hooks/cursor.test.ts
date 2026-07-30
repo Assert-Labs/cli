@@ -66,6 +66,11 @@ describe('cursor hook adapter', () => {
     const events = readEvents('s1');
     expect(events.find((e) => e.type === 'human_turn')?.content).toBe('add a feature');
     expect(events.find((e) => e.type === 'tool_call')?.toolName).toBe('edit_file');
+    // Cursor names the path at the top level, not inside toolInput.
+    expect(events.find((e) => e.type === 'tool_call')?.action).toEqual({
+      kind: 'edit',
+      paths: ['feature.ts'],
+    });
     expect(events.some((e) => e.type === 'tool_result')).toBe(true);
 
     const attr = events.find((e) => e.type === 'attribution');

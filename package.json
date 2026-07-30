@@ -42,6 +42,7 @@
     "dist/core.js",
     "dist/core.d.ts",
     "dist/schema.d.ts",
+    "dist/tool-actions.d.ts",
     "bin"
   ],
   "author": "Assert Labs",

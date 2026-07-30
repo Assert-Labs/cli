@@ -4,14 +4,29 @@
  * Sessions are stored as JSONL files in .sessions/ folder.
  * Each line is a JSON-serialized event that's appended as it occurs.
  * This enables streaming writes and crash recovery.
+ *
+ * The format is a contract, not a dump: an event's fields mean the same thing
+ * whichever agent produced it. Agent-specific shapes (tool names, input keys,
+ * patch blobs) are resolved by the capture adapter, never by a consumer — see
+ * ./tool-actions for the canonical tool vocabulary. Fields typed as required
+ * here are guaranteed present on every event a consumer sees; `parseSession`
+ * (./core) drops anything that doesn't hold up.
  */
+
+import type { ToolAction } from './tool-actions';
+
+export type { ToolAction, ToolActionKind } from './tool-actions';
+
+/** Bumped when the on-disk event shape changes; written to each session's
+ * meta.json. 4 = canonical `tool_call.action`. */
+export const SESSION_FORMAT_VERSION = 4;
 
 // === Base Event ===
 // All events share this structure
 
 export interface BaseEvent {
   type: string;
-  timestamp: string; // ISO 8601
+  timestamp: string; // ISO 8601 — required on every event, always parseable
   sessionId: string;
 }
 
@@ -78,8 +93,15 @@ export interface ToolCallEvent extends BaseEvent {
   type: 'tool_call';
   turnId: string;
   toolCallId: string;
+  /** The agent's own name for the tool. A label for an unrecognized tool —
+   * never something a consumer should parse to decide what happened. */
   toolName: string;
-  input: Record<string, unknown>;
+  /** What the call did, in the canonical vocabulary every agent maps onto.
+   * This is the contract consumers read (see ./tool-actions). */
+  action: ToolAction;
+  /** The agent's raw input, sanitized. Kept so a capture stays inspectable and
+   * so future canonical fields can be backfilled — not for display. */
+  input?: Record<string, unknown>;
 }
 
 export interface ToolResultEvent extends BaseEvent {
@@ -222,6 +244,26 @@ export function createToolCallId(): string {
 
 export function parseSessionEvent(line: string): SessionEvent {
   return JSON.parse(line) as SessionEvent;
+}
+
+/**
+ * Whether a parsed line is a usable event: it has a type, a session, and a
+ * real ISO timestamp. Timestamps are load-bearing — events are ordered by them
+ * and consumers date sessions from them — so an event without one is dropped
+ * rather than defaulted, and nothing downstream has to guard for a missing or
+ * zero time.
+ */
+export function isSessionEvent(value: unknown): value is SessionEvent {
+  const event = value as Partial<BaseEvent> | null;
+  return (
+    typeof event === 'object' &&
+    event !== null &&
+    typeof event.type === 'string' &&
+    event.type.length > 0 &&
+    typeof event.sessionId === 'string' &&
+    typeof event.timestamp === 'string' &&
+    !Number.isNaN(Date.parse(event.timestamp))
+  );
 }
 
 export function serializeSessionEvent(event: SessionEvent): string {

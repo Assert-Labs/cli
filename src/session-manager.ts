@@ -22,6 +22,7 @@ import {
   createTurnId,
   createToolCallId,
 } from './schema';
+import { toolAction } from './tool-actions';
 import { createSessionWriter, type SessionWriter } from './session-writer';
 import { findGitRoot, getGitState, createGitWatcher, type GitWatcher } from './git-watcher';
 
@@ -200,6 +201,7 @@ export function createSession(options: SessionManagerOptions): SessionManager {
         turnId,
         toolCallId,
         toolName,
+        action: toolAction(source, toolName, input),
         input,
       };
       writeEvent(event);
