@@ -1,6 +1,6 @@
 {
   "name": "@assertlabs/cli",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "type": "module",
   "main": "dist/cli.js",
   "exports": {
@@ -33,6 +33,7 @@
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "pnpm build"
