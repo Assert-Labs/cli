@@ -233,6 +233,22 @@ describe('cursor hook adapter, real Cursor 3.13 payloads', () => {
     expect(blame![0].agent).toBe('cursor');
   });
 
+  it('resolves a relative edit path against the workspace, not the process cwd', async () => {
+    // A relative path resolved against process.cwd() tracks whatever repo the
+    // hook happens to run in, which publishes this session into an unrelated
+    // repository and attributes that repo's files.
+    const outsider = process.cwd();
+    await hook('sessionStart');
+    await hook('beforeSubmitPrompt');
+    fs.writeFileSync(path.join(repo, 'rel.ts'), 'export const rel = 1\n');
+    await hook('afterFileEdit', { file_path: 'rel.ts' });
+
+    const sessionId = fixture('sessionStart').session_id as string;
+    const state = loadState(sessionId, 'cursor')!;
+    expect(Object.keys(state.repos)).toEqual([repo]);
+    expect(Object.keys(state.repos)).not.toContain(outsider);
+  });
+
   it('records one tool call per edit, not two', async () => {
     const target = path.join(repo, 'dup.ts');
     await hook('sessionStart');

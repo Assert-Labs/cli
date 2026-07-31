@@ -24,7 +24,6 @@ import {
   endSession,
   syncSession,
   recordActionFiles,
-  recordFileEdit,
   resolveActionPaths,
   writeEvent,
   findSessionIdForWorkspace,
@@ -302,7 +301,10 @@ export function handleAfterFileEdit(data: CursorToolUse): void {
   if (!state) return;
   const filePath = data.file_path ?? data.filePath;
   if (!filePath) return;
-  recordFileEdit(state, filePath);
+  // Via the canonical action so a relative path resolves against the session's
+  // workspace. Resolving it against the process cwd instead would track (and
+  // publish into) whatever repo the hook process happens to be running in.
+  recordActionFiles(state, { kind: 'edit', paths: [filePath] });
   saveState(state);
 }
 
