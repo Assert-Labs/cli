@@ -40,44 +40,6 @@ Capture AI agent sessions from any agentic coding tool as part of your repositor
 4. A repo gets nothing until the agent changes a file in it, and a session
    spanning several repos is written into each one it touched.
 
-## Session Format
-
-Sessions are JSONL: one JSON event per line, in one schema regardless of which
-agent produced them. Every event carries a `type`, a `sessionId`, and an ISO
-`timestamp`.
-
-Agents disagree about everything else — Claude Code reads a file with
-`Read {file_path}`, OpenCode with `read {filePath}`, Pi with `read {path}`, and
-Codex edits by passing a whole patch blob under `command`. Each agent's adapter
-resolves that at capture time, so every `tool_call` carries a canonical
-`action` alongside the tool's own name:
-
-```jsonc
-{
-  "type": "tool_call",
-  "timestamp": "2026-07-20T10:00:03.000Z",
-  "sessionId": "…",
-  "turnId": "…",
-  "toolCallId": "…",
-  "toolName": "apply_patch",              // the agent's name for the tool
-  "action": {                             // the canonical, cross-agent view
-    "kind": "edit",
-    "paths": ["src/a.ts"]                 // repo-relative, POSIX
-  },
-  "input": { "command": "*** Begin Patch…" } // the agent's raw payload
-}
-```
-
-`action.kind` is one of `read`, `edit`, `write`, `delete`, `search`, `web`,
-`command`, `task`, `todo`, or `other`, with `paths`, `command`, `query`, and
-`url` carrying the details. A tool the adapter doesn't recognize (a new
-built-in, an MCP tool) is reported as `other` rather than guessed at.
-
-Read `action`; treat `toolName` as a display label and `input` as debugging
-detail. `@assertlabs/cli/core` exposes `parseSession()`, which returns this
-model with linked turns and prompts (and fills in `action` for captures written
-before it existed).
-
 ## Installation
 
 > [!NOTE]
@@ -123,7 +85,7 @@ the newly installed hooks.
 
 **Install order doesn't matter.** `assert init` pre-installs the hook for every
 supported agent — including ones you haven't installed yet — into that agent's
-standard plugin directory. An agent you install *later* auto-discovers the hook
+standard plugin directory. An agent you install _later_ auto-discovers the hook
 on its first run, no re-init required. You can still re-run `assert init` any
 time to refresh hooks (e.g. after upgrading assert, or to pick up an agent's
 version-specific features), or `assert init <agent>` to (re)install just one.
@@ -133,6 +95,45 @@ version-specific features), or `assert init <agent>` to (re)install just one.
 - macOS or Linux, x64 or arm64 (no Windows or Alpine/musl build yet)
 - `git` available on your PATH — the CLI shells out to git at runtime
 - If installing via NPM or from source: `Node.js 18 or later`
+
+## Session Format
+
+Sessions are JSONL: one JSON event per line, in one schema regardless of which
+agent produced them. Every event carries a `type`, a `sessionId`, and an ISO
+`timestamp`.
+
+Agents disagree about everything else — Claude Code reads a file with
+`Read {file_path}`, OpenCode with `read {filePath}`, Pi with `read {path}`, and
+Codex edits by passing a whole patch blob under `command`. Each agent's adapter
+resolves that at capture time, so every `tool_call` carries a canonical
+`action` alongside the tool's own name:
+
+```jsonc
+{
+  "type": "tool_call",
+  "timestamp": "2026-07-20T10:00:03.000Z",
+  "sessionId": "…",
+  "turnId": "…",
+  "toolCallId": "…",
+  "toolName": "apply_patch", // the agent's name for the tool
+  "action": {
+    // the canonical, cross-agent view
+    "kind": "edit",
+    "paths": ["src/a.ts"], // repo-relative, POSIX
+  },
+  "input": { "command": "*** Begin Patch…" }, // the agent's raw payload
+}
+```
+
+`action.kind` is one of `read`, `edit`, `write`, `delete`, `search`, `web`,
+`command`, `task`, `todo`, or `other`, with `paths`, `command`, `query`, and
+`url` carrying the details. A tool the adapter doesn't recognize (a new
+built-in, an MCP tool) is reported as `other` rather than guessed at.
+
+Read `action`; treat `toolName` as a display label and `input` as debugging
+detail. `@assertlabs/cli/core` exposes `parseSession()`, which returns this
+model with linked turns and prompts (and fills in `action` for captures written
+before it existed).
 
 ## Supported Agents
 

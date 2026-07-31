@@ -40,6 +40,23 @@ context, contribution process, and security policy, see
   type, so an unprefixed subject lands the change under "Other" or mis-groups it;
   `chore|ci|build|test|style` and `bump version` are omitted from the notes.
 
+## Testing against real agents
+
+`pnpm test` only proves the adapters match our own assumptions about what an
+agent sends. It can't catch an agent changing its payload.
+
+`pnpm test:live` drives the real agent binaries headlessly against a throwaway
+repo and asserts on what lands in `.sessions/`. It needs each agent installed
+and authenticated, spends tokens, and takes minutes, so it's not part of
+`pnpm test` or CI. Run it before releasing anything that touches `src/hooks/`
+or `src/tool-actions.ts`. `pnpm test:live -t cursor` runs a single agent, and
+agents that aren't installed or signed in are skipped rather than failed.
+
+If an agent's payload turns out to differ from what an adapter assumed, record
+a real payload under `tests/fixtures/` and replay it in that adapter's tests
+(see `tests/fixtures/cursor-payloads.json`). Raw payloads bypass the sanitizer,
+so scrub them before committing.
+
 ## Where tests go
 
 Put new tests in the existing file that covers the area before creating a new
@@ -56,6 +73,7 @@ matching relative depth (`../src/...` at the top level, `../../src/...` under
 pnpm install          # install deps (CI uses --frozen-lockfile)
 pnpm typecheck        # tsc over src + tests, no emit
 pnpm test             # vitest run (single pass)
+pnpm test:live        # drive real agents headlessly (see "Testing against real agents")
 pnpm test:watch       # vitest in watch mode
 pnpm build            # esbuild bundle -> dist/cli.js (ESM)
 pnpm build:sea        # CJS bundle for the single-executable (SEA) release
