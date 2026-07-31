@@ -1,0 +1,21 @@
+src/hooks/cursor.ts
+  s_070e14f73d8430::t_1b58ebdaf377fe 304-307
+tests/hooks/cursor.test.ts
+  s_070e14f73d8430::t_223818db632aaf 236-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "99e1bbd7d7f4ab57c0bfd00d270646b157d1a77b",
+  "prompts": {},
+  "sessions": {
+    "s_070e14f73d8430": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8acabe4c-52a4-4ec7-be38-9e051170611f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
