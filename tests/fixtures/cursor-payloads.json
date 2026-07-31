@@ -1,0 +1,225 @@
+[
+  {
+    "hookType": "sessionStart",
+    "payload": {
+      "conversation_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "generation_id": "",
+      "model": "claude-opus-4-8-thinking-high",
+      "model_id": "claude-opus-4-8",
+      "model_params": [
+        {
+          "id": "thinking",
+          "value": "true"
+        },
+        {
+          "id": "context",
+          "value": "300k"
+        },
+        {
+          "id": "effort",
+          "value": "high"
+        },
+        {
+          "id": "fast",
+          "value": "false"
+        }
+      ],
+      "is_background_agent": false,
+      "composer_mode": "agent",
+      "session_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "hook_event_name": "sessionStart",
+      "cursor_version": "3.13.10",
+      "workspace_roots": [
+        "/workspace"
+      ],
+      "user_email": "dev@example.com",
+      "transcript_path": null
+    }
+  },
+  {
+    "hookType": "beforeSubmitPrompt",
+    "payload": {
+      "conversation_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "generation_id": "d36f5328-28f1-4c89-802a-9dc894ae50c1",
+      "model": "claude-opus-4-8-thinking-high",
+      "model_id": "claude-opus-4-8",
+      "model_params": [
+        {
+          "id": "thinking",
+          "value": "true"
+        },
+        {
+          "id": "context",
+          "value": "300k"
+        },
+        {
+          "id": "effort",
+          "value": "high"
+        },
+        {
+          "id": "fast",
+          "value": "false"
+        }
+      ],
+      "composer_mode": "agent",
+      "prompt": "edit format-cursor.ts with something trivial",
+      "attachments": [],
+      "session_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "hook_event_name": "beforeSubmitPrompt",
+      "cursor_version": "3.13.10",
+      "workspace_roots": [
+        "/workspace"
+      ],
+      "user_email": "dev@example.com",
+      "transcript_path": null
+    }
+  },
+  {
+    "hookType": "preToolUse",
+    "payload": {
+      "conversation_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "generation_id": "d36f5328-28f1-4c89-802a-9dc894ae50c1",
+      "model": "claude-opus-4-8",
+      "tool_name": "Read",
+      "tool_input": {
+        "file_path": "/workspace/src/lib/format-cursor.ts"
+      },
+      "tool_use_id": "toolu_011Q9cfTFhNkfTS7LtmJWf5r",
+      "session_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "hook_event_name": "preToolUse",
+      "cursor_version": "3.13.10",
+      "workspace_roots": [
+        "/workspace"
+      ],
+      "user_email": "dev@example.com",
+      "transcript_path": null
+    }
+  },
+  {
+    "hookType": "postToolUse",
+    "payload": {
+      "conversation_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "generation_id": "d36f5328-28f1-4c89-802a-9dc894ae50c1",
+      "model": "claude-opus-4-8",
+      "tool_name": "Read",
+      "tool_input": {
+        "file_path": "/workspace/src/lib/format-cursor.ts"
+      },
+      "tool_output": "{\"file_path\":\"/workspace/src/lib/format-cursor.ts\",\"content_length\":85}",
+      "duration": 314.602,
+      "tool_use_id": "toolu_011Q9cfTFhNkfTS7LtmJWf5r",
+      "session_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "hook_event_name": "postToolUse",
+      "cursor_version": "3.13.10",
+      "workspace_roots": [
+        "/workspace"
+      ],
+      "user_email": "dev@example.com",
+      "transcript_path": null
+    }
+  },
+  {
+    "hookType": "afterFileEdit",
+    "payload": {
+      "conversation_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "generation_id": "d36f5328-28f1-4c89-802a-9dc894ae50c1",
+      "model": "claude-opus-4-8",
+      "file_path": "/workspace/src/lib/format-cursor.ts",
+      "edits": [
+        {
+          "old_string": "  return `[cursor] ${value}`;",
+          "new_string": "  return `[cursor] ${value.trim()}`;"
+        }
+      ],
+      "session_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "hook_event_name": "afterFileEdit",
+      "cursor_version": "3.13.10",
+      "workspace_roots": [
+        "/workspace"
+      ],
+      "user_email": "dev@example.com",
+      "transcript_path": "/home/user/.cursor/projects/workspace/agent-transcripts/518aa810-911d-4526-b4c0-f9f92129652b/518aa810-911d-4526-b4c0-f9f92129652b.jsonl"
+    }
+  },
+  {
+    "hookType": "afterAgentResponse",
+    "payload": {
+      "conversation_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "generation_id": "d36f5328-28f1-4c89-802a-9dc894ae50c1",
+      "model": "claude-opus-4-8-thinking-high",
+      "model_id": "claude-opus-4-8",
+      "model_params": [
+        {
+          "id": "thinking",
+          "value": "true"
+        },
+        {
+          "id": "context",
+          "value": "300k"
+        },
+        {
+          "id": "effort",
+          "value": "high"
+        },
+        {
+          "id": "fast",
+          "value": "false"
+        }
+      ],
+      "text": "Done. I added a `.trim()` to the interpolated value in `cursorLabel`, so it strips surrounding whitespace before formatting.",
+      "input_tokens": 94724,
+      "output_tokens": 400,
+      "cache_read_tokens": 90778,
+      "cache_write_tokens": 3940,
+      "session_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "hook_event_name": "afterAgentResponse",
+      "cursor_version": "3.13.10",
+      "workspace_roots": [
+        "/workspace"
+      ],
+      "user_email": "dev@example.com",
+      "transcript_path": "/home/user/.cursor/projects/workspace/agent-transcripts/518aa810-911d-4526-b4c0-f9f92129652b/518aa810-911d-4526-b4c0-f9f92129652b.jsonl"
+    }
+  },
+  {
+    "hookType": "stop",
+    "payload": {
+      "conversation_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "generation_id": "d36f5328-28f1-4c89-802a-9dc894ae50c1",
+      "model": "claude-opus-4-8-thinking-high",
+      "model_id": "claude-opus-4-8",
+      "model_params": [
+        {
+          "id": "thinking",
+          "value": "true"
+        },
+        {
+          "id": "context",
+          "value": "300k"
+        },
+        {
+          "id": "effort",
+          "value": "high"
+        },
+        {
+          "id": "fast",
+          "value": "false"
+        }
+      ],
+      "status": "completed",
+      "loop_count": 0,
+      "input_tokens": 94724,
+      "output_tokens": 400,
+      "cache_read_tokens": 90778,
+      "cache_write_tokens": 3940,
+      "session_id": "518aa810-911d-4526-b4c0-f9f92129652b",
+      "hook_event_name": "stop",
+      "cursor_version": "3.13.10",
+      "workspace_roots": [
+        "/workspace"
+      ],
+      "user_email": "dev@example.com",
+      "transcript_path": "/home/user/.cursor/projects/workspace/agent-transcripts/518aa810-911d-4526-b4c0-f9f92129652b/518aa810-911d-4526-b4c0-f9f92129652b.jsonl"
+    }
+  }
+]

@@ -7,6 +7,13 @@
  *
  * Supported hooks (camelCase per Cursor docs): sessionStart, sessionEnd, stop,
  * preToolUse, postToolUse, beforeSubmitPrompt, afterAgentResponse, afterFileEdit.
+ *
+ * Cursor names the *hooks* in camelCase but the *payload fields* in snake_case
+ * (`session_id`, `tool_name`, `tool_input`, `workspace_roots`, `prompt`). See
+ * tests/fixtures/cursor-payloads.json, captured from Cursor 3.13. Everything
+ * here is read defensively: these fields come off hook stdin, so none of them
+ * is guaranteed, and a missing one must degrade rather than throw. Older
+ * Cursor builds used camelCase payloads, so both spellings are accepted.
  */
 
 import {
@@ -17,6 +24,7 @@ import {
   endSession,
   syncSession,
   recordActionFiles,
+  recordFileEdit,
   resolveActionPaths,
   writeEvent,
   findSessionIdForWorkspace,
@@ -27,7 +35,8 @@ import {
   type ToolResultEvent,
   type HumanTurnEvent,
   type AssistantTurnStartEvent,
-  createSessionId,
+  type AssistantTextEvent,
+  type AssistantTurnEndEvent,
   createTurnId,
   createToolCallId,
 } from '../schema';
@@ -35,55 +44,98 @@ import { toolAction, type ToolAction } from '../tool-actions';
 
 const SOURCE = 'cursor';
 
-interface CursorSessionStart {
+/** Fields Cursor puts on every hook payload. All optional: untrusted input. */
+interface CursorBase {
+  session_id?: string;
+  conversation_id?: string;
+  workspace_roots?: string[];
+  model?: string;
+  model_id?: string;
+  // Pre-3.x spellings.
   sessionId?: string;
   workspaceRoot?: string;
 }
 
-interface CursorSessionEnd {
-  sessionId?: string;
-  workspaceRoot?: string;
-}
-
-interface CursorToolUse {
-  sessionId?: string;
-  workspaceRoot?: string;
+interface CursorToolUse extends CursorBase {
+  tool_name?: string;
+  tool_input?: Record<string, unknown>;
+  tool_output?: string;
+  tool_use_id?: string;
+  duration?: number;
+  // Pre-3.x spellings, plus the flat shape afterFileEdit still uses.
   toolName?: string;
   toolInput?: Record<string, unknown>;
+  file_path?: string;
   filePath?: string;
   editType?: string;
-  content?: string;
   success?: boolean;
   error?: string;
 }
 
-interface CursorPrompt {
-  sessionId?: string;
-  workspaceRoot?: string;
-  content?: string;
+interface CursorPrompt extends CursorBase {
+  prompt?: string;
+  content?: string; // pre-3.x
+}
+
+interface CursorAgentResponse extends CursorBase {
+  text?: string;
+}
+
+/** Cursor's id for the conversation. */
+function payloadSessionId(data: CursorBase): string | undefined {
+  return data.session_id ?? data.sessionId ?? data.conversation_id;
 }
 
 /**
- * The canonical action for a Cursor tool event. Cursor's file hooks
- * (`afterFileEdit`, and `preToolUse` for the built-in editor) carry the path at
- * the top level instead of in `toolInput`, and may not name the tool at all —
- * in Cursor that shape is always an edit of that file.
+ * The workspace this hook belongs to. Cursor runs hooks with the *plugin*
+ * directory as cwd on most events, so `process.cwd()` is a last resort that
+ * would otherwise attribute the session to `~/.cursor/plugins/...` instead of
+ * the user's repo.
  */
-function cursorAction(data: CursorToolUse): ToolAction {
-  const action = toolAction(SOURCE, data.toolName ?? '', data.toolInput ?? {});
-  if (!data.filePath || action.paths?.length) return action;
-  if (action.kind === 'other') return { kind: 'edit', paths: [data.filePath] };
-  return { ...action, paths: [data.filePath] };
+function workspaceRoot(data: CursorBase): string {
+  return (
+    data.workspace_roots?.[0] ??
+    data.workspaceRoot ??
+    process.env.CURSOR_PROJECT_DIR ??
+    process.cwd()
+  );
+}
+
+function modelId(data: CursorBase): string | undefined {
+  return data.model_id ?? data.model;
 }
 
 /** Resolve the session id for a hook that may omit it. */
-function resolveSessionId(data: { sessionId?: string; workspaceRoot?: string }): string | null {
-  if (data.sessionId) return data.sessionId;
-  const cwd = data.workspaceRoot || process.cwd();
-  return findSessionIdForWorkspace(cwd, SOURCE);
+function resolveSessionId(data: CursorBase): string | null {
+  return payloadSessionId(data) ?? findSessionIdForWorkspace(workspaceRoot(data), SOURCE);
 }
 
-function ensureTurn(state: SessionState): string {
+/**
+ * Load the session, starting it if we haven't seen it yet. A plugin enabled
+ * mid-conversation surfaces a prompt or tool event before any sessionStart.
+ */
+function ensureSession(data: CursorBase): SessionState | null {
+  const sessionId = resolveSessionId(data);
+  if (!sessionId) return null;
+  return loadState(sessionId, SOURCE) ?? startOrResumeSession(sessionId, SOURCE, workspaceRoot(data)).state;
+}
+
+/**
+ * The canonical action for a Cursor tool event. `afterFileEdit` names the file
+ * at the top level rather than inside `tool_input` and doesn't name a tool at
+ * all. In Cursor that shape is always an edit of that file.
+ */
+function cursorAction(data: CursorToolUse): ToolAction {
+  const name = data.tool_name ?? data.toolName ?? '';
+  const input = data.tool_input ?? data.toolInput ?? {};
+  const action = toolAction(SOURCE, name, input);
+  const flatPath = data.file_path ?? data.filePath;
+  if (!flatPath || action.paths?.length) return action;
+  if (action.kind === 'other') return { kind: 'edit', paths: [flatPath] };
+  return { ...action, paths: [flatPath] };
+}
+
+function ensureTurn(state: SessionState, model?: string): string {
   if (!state.currentTurnId) {
     state.currentTurnId = createTurnId();
     const startEvent: AssistantTurnStartEvent = {
@@ -91,6 +143,7 @@ function ensureTurn(state: SessionState): string {
       timestamp: new Date().toISOString(),
       sessionId: state.sessionId,
       turnId: state.currentTurnId,
+      model,
       promptTurnId: state.currentPromptId ?? undefined,
     };
     writeEvent(state.sessionId, startEvent);
@@ -98,14 +151,14 @@ function ensureTurn(state: SessionState): string {
   return state.currentTurnId;
 }
 
-export function handleSessionStart(data: CursorSessionStart): void {
-  const cwd = data.workspaceRoot || process.cwd();
-  const sessionId = data.sessionId || createSessionId();
-  const { resumed } = startOrResumeSession(sessionId, SOURCE, cwd);
+export function handleSessionStart(data: CursorBase): void {
+  const sessionId = resolveSessionId(data);
+  if (!sessionId) return;
+  const { resumed } = startOrResumeSession(sessionId, SOURCE, workspaceRoot(data));
   console.error(`[assert] Cursor session ${resumed ? 'resumed' : 'started'}: ${sessionId}`);
 }
 
-export function handleSessionEnd(data: CursorSessionEnd): void {
+export function handleSessionEnd(data: CursorBase): void {
   const sessionId = resolveSessionId(data);
   if (!sessionId) {
     console.error('[assert] No active Cursor session found');
@@ -116,91 +169,93 @@ export function handleSessionEnd(data: CursorSessionEnd): void {
   endSession(state, 'completed');
 }
 
-export function handleStop(data: CursorSessionEnd): void {
+export function handleStop(data: CursorBase): void {
   const sessionId = resolveSessionId(data);
   if (!sessionId) return;
   const state = loadState(sessionId, SOURCE);
   if (!state) return;
-  // End of a turn, not the session: finalize this turn's attribution and
-  // materialize it, keeping the session open.
+
+  // End of a turn, not the session: close the turn, finalize this turn's
+  // attribution and materialize it, keeping the session open.
+  if (state.currentTurnId) {
+    const endEvent: AssistantTurnEndEvent = {
+      type: 'assistant_turn_end',
+      timestamp: new Date().toISOString(),
+      sessionId: state.sessionId,
+      turnId: state.currentTurnId,
+    };
+    writeEvent(state.sessionId, endEvent);
+  }
   state.currentTurnId = null;
   saveState(state);
   syncSession(state, undefined, true);
 }
 
 export function handlePreToolUse(data: CursorToolUse): void {
-  const sessionId = resolveSessionId(data);
-  if (!sessionId) return;
-  const state = loadState(sessionId, SOURCE);
+  const state = ensureSession(data);
   if (!state) return;
 
-  const turnId = ensureTurn(state);
+  const turnId = ensureTurn(state, modelId(data));
   const toolCallId = createToolCallId();
-  const toolName = data.toolName || 'Edit';
+  const toolName = data.tool_name ?? data.toolName ?? 'Edit';
   const event: ToolCallEvent = {
     type: 'tool_call',
     timestamp: new Date().toISOString(),
-    sessionId,
+    sessionId: state.sessionId,
     turnId,
     toolCallId,
     toolName,
     action: resolveActionPaths(cursorAction(data), state.cwd),
-    input: data.toolInput || { filePath: data.filePath, editType: data.editType },
+    input: data.tool_input ?? data.toolInput,
   };
-  writeEvent(sessionId, event);
+  writeEvent(state.sessionId, event);
 
-  // Key pending calls by filePath (Cursor matches results by file).
-  state.pendingToolCalls.set(data.filePath || toolName, toolCallId);
+  // Cursor gives a stable tool_use_id, so key pending calls on it and the result
+  // matches even when the same tool runs twice in a turn.
+  state.pendingToolCalls.set(data.tool_use_id ?? data.file_path ?? toolName, toolCallId);
   saveState(state);
 }
 
 export function handlePostToolUse(data: CursorToolUse): void {
-  const sessionId = resolveSessionId(data);
-  if (!sessionId) return;
-  const state = loadState(sessionId, SOURCE);
+  const state = ensureSession(data);
   if (!state) return;
 
-  const filePath = data.filePath;
-  const key = filePath || data.toolName || 'Edit';
+  const toolName = data.tool_name ?? data.toolName ?? 'Edit';
+  const key = data.tool_use_id ?? data.file_path ?? toolName;
   const toolCallId = state.pendingToolCalls.get(key) || createToolCallId();
 
-  // Track the edit against its own repo (multi-repo aware). Cursor may give an
-  // absolute or workspace-relative path; the canonical action resolves it.
-  const filesModified = data.success
-    ? recordActionFiles(state, cursorAction(data))
-    : undefined;
+  // Track edits against their own repo (multi-repo aware).
+  const filesModified = recordActionFiles(state, cursorAction(data));
 
   const event: ToolResultEvent = {
     type: 'tool_result',
     timestamp: new Date().toISOString(),
-    sessionId,
+    sessionId: state.sessionId,
     turnId: state.currentTurnId || createTurnId(),
     toolCallId,
-    output: data.success ? 'Edit successful' : undefined,
+    output: data.tool_output ?? (data.success ? 'Edit successful' : undefined),
     error: data.error,
     filesModified,
   };
-  writeEvent(sessionId, event);
+  writeEvent(state.sessionId, event);
 
   state.pendingToolCalls.delete(key);
   saveState(state);
 }
 
 export function handleBeforeSubmitPrompt(data: CursorPrompt): void {
-  const sessionId = resolveSessionId(data);
-  if (!sessionId) return;
-  const state = loadState(sessionId, SOURCE);
+  const state = ensureSession(data);
   if (!state) return;
 
   const promptTurnId = createTurnId();
   const event: HumanTurnEvent = {
     type: 'human_turn',
     timestamp: new Date().toISOString(),
-    sessionId,
+    sessionId: state.sessionId,
     turnId: promptTurnId,
-    content: data.content || '',
+    content: data.prompt ?? data.content ?? '',
   };
-  writeEvent(sessionId, event);
+  writeEvent(state.sessionId, event);
 
   state.currentTurnId = null;
   // The next assistant turn links back to this prompt.
@@ -208,26 +263,47 @@ export function handleBeforeSubmitPrompt(data: CursorPrompt): void {
   saveState(state);
 }
 
-export function handleAfterAgentResponse(data: CursorPrompt): void {
-  const sessionId = resolveSessionId(data);
-  if (!sessionId) return;
-  const state = loadState(sessionId, SOURCE);
+export function handleAfterAgentResponse(data: CursorAgentResponse): void {
+  const state = ensureSession(data);
   if (!state) return;
 
+  if (data.text) {
+    const turnId = ensureTurn(state, modelId(data));
+    const textEvent: AssistantTextEvent = {
+      type: 'assistant_text',
+      timestamp: new Date().toISOString(),
+      sessionId: state.sessionId,
+      turnId,
+      text: data.text,
+    };
+    writeEvent(state.sessionId, textEvent);
+  }
+
   if (state.currentTurnId) {
-    writeEvent(sessionId, {
+    writeEvent(state.sessionId, {
       type: 'assistant_turn_end',
       timestamp: new Date().toISOString(),
-      sessionId,
+      sessionId: state.sessionId,
       turnId: state.currentTurnId,
     });
     state.currentTurnId = null;
-    saveState(state);
   }
+  saveState(state);
 }
 
+/**
+ * Cursor reports a file edit both as a tool call (pre/postToolUse) and as
+ * `afterFileEdit`. The tool call already recorded the transcript, so this only
+ * makes sure the edited file's repo is tracked. Emitting a second tool_call
+ * here would double-count the edit.
+ */
 export function handleAfterFileEdit(data: CursorToolUse): void {
-  handlePostToolUse(data);
+  const state = ensureSession(data);
+  if (!state) return;
+  const filePath = data.file_path ?? data.filePath;
+  if (!filePath) return;
+  recordFileEdit(state, filePath);
+  saveState(state);
 }
 
 export async function processHook(hookType: string, input: string): Promise<void> {

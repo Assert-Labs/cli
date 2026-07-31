@@ -6,7 +6,7 @@
  * `read {filePath}` in OpenCode, `read {path}` in Pi, and editing is a patch
  * blob under `patchText` (OpenCode) or `command` (Codex). A capture is only
  * useful to a reader that doesn't know which agent produced it if that
- * difference is resolved exactly once — here, at capture time.
+ * difference is resolved exactly once, here, at capture time.
  *
  * So each agent adapter declares how *its own* tools map onto the fixed
  * vocabulary below, and every `tool_call` event carries the resulting
@@ -20,16 +20,16 @@
 /**
  * What a tool call did, independent of which agent ran it.
  *
- * - `read`    — read a file's contents
- * - `edit`    — modify part of an existing file
- * - `write`   — create a file or replace its contents
- * - `delete`  — remove a file
- * - `search`  — search the workspace (grep, glob, codebase search)
- * - `web`     — search or fetch something off the machine
- * - `command` — run a shell command
- * - `task`    — delegate to a subagent
- * - `todo`    — update a plan / todo list
- * - `other`   — anything not in this vocabulary, including unregistered and
+ * - `read`: read a file's contents
+ * - `edit`: modify part of an existing file
+ * - `write`: create a file or replace its contents
+ * - `delete`: remove a file
+ * - `search`: search the workspace (grep, glob, codebase search)
+ * - `web`: search or fetch something off the machine
+ * - `command`: run a shell command
+ * - `task`: delegate to a subagent
+ * - `todo`: update a plan / todo list
+ * - `other`: anything not in this vocabulary, including unregistered and
  *               MCP tools. Deliberately inert: consumers fall back to
  *               `toolName` for a label and show nothing else.
  */
@@ -71,7 +71,7 @@ export type ToolActionMap = Record<string, (input: ToolInput) => ToolAction>;
 type ToolInput = Record<string, unknown>;
 
 /** The first of `keys` holding a non-empty string. Keys are the aliases a
- * single agent has used for one field across versions — never a cross-agent
+ * single agent has used for one field across versions, never a cross-agent
  * grab bag. */
 function text(input: ToolInput, ...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -151,13 +151,17 @@ const CODEX_TOOLS: ToolActionMap = {
   update_plan: () => ({ kind: 'todo' }),
 };
 
+// Cursor hosts other vendors' models and forwards their tool schema verbatim:
+// a Claude-backed agent reports `Write {file_path}`, exactly as Claude Code
+// does (confirmed against Cursor 3.13 payloads in
+// tests/fixtures/cursor-payloads.json). So Cursor's map is Claude's, plus the
+// tools Cursor defines itself.
 const CURSOR_TOOLS: ToolActionMap = {
-  read_file: (i) => ({ kind: 'read', paths: paths(i, 'filePath', 'path') }),
-  edit_file: (i) => ({ kind: 'edit', paths: paths(i, 'filePath', 'path') }),
-  search_replace: (i) => ({ kind: 'edit', paths: paths(i, 'filePath', 'path') }),
-  write: (i) => ({ kind: 'write', paths: paths(i, 'filePath', 'path') }),
-  delete_file: (i) => ({ kind: 'delete', paths: paths(i, 'filePath', 'path') }),
-  grep: (i) => ({ kind: 'search', query: text(i, 'pattern', 'query') }),
+  ...CLAUDE_CODE_TOOLS,
+  read_file: (i) => ({ kind: 'read', paths: paths(i, 'file_path', 'filePath', 'path') }),
+  edit_file: (i) => ({ kind: 'edit', paths: paths(i, 'file_path', 'filePath', 'path') }),
+  search_replace: (i) => ({ kind: 'edit', paths: paths(i, 'file_path', 'filePath', 'path') }),
+  delete_file: (i) => ({ kind: 'delete', paths: paths(i, 'file_path', 'filePath', 'path') }),
   codebase_search: (i) => ({ kind: 'search', query: text(i, 'query') }),
   glob_file_search: (i) => ({ kind: 'search', query: text(i, 'globPattern', 'pattern') }),
   run_terminal_cmd: (i) => ({ kind: 'command', command: text(i, 'command') }),
@@ -215,7 +219,7 @@ function isDetailed(action: ToolAction): boolean {
 
 /**
  * A best guess across every agent's map, for a capture whose producing agent
- * is unknown — early captures that predate `session_start`. Agents overwhelmingly
+ * is unknown, such as captures that predate `session_start`. Agents overwhelmingly
  * agree on what a tool named `read` or `bash` does and disagree only about
  * which key holds its argument, so the first map that finds an argument wins.
  */
@@ -258,7 +262,7 @@ export function toolAction(
   return build ? build(input) : { kind: 'other' };
 }
 
-/** Drop everything but the kind — used when a call's payload is redacted. */
+/** Drop everything but the kind, for a call whose payload is redacted. */
 export function redactedToolAction(action: ToolAction | undefined): ToolAction {
   return { kind: action?.kind ?? 'other' };
 }
