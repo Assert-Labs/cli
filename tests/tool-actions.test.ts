@@ -103,6 +103,18 @@ describe('toolAction', () => {
     });
   });
 
+  it('survives a payload with no usable tool name', () => {
+    // Codex omits `tool_name` on some tool events. This runs inside a capture
+    // hook, so throwing here loses the whole tool call — silently, since the
+    // agent never surfaces a hook failure.
+    expect(toolAction('codex', undefined, { command: 'ls' })).toEqual({ kind: 'other' });
+    expect(toolAction('codex', '', { command: 'ls' })).toEqual({ kind: 'other' });
+    expect(toolAction('unknown', undefined)).toEqual({ kind: 'other' });
+    expect(toolAction('claude-code', undefined as unknown as string)).toEqual({
+      kind: 'other',
+    });
+  });
+
   it('falls back across agents when the capture never recorded its agent', () => {
     // Pre-`session_start` captures have no source; the tool name still tells
     // us what happened, whichever agent's key holds the argument.

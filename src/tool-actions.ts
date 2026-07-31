@@ -241,9 +241,16 @@ function anyAgentAction(toolName: string, input: ToolInput): ToolAction {
  */
 export function toolAction(
   source: string,
-  toolName: string,
+  toolName: string | undefined,
   input: Record<string, unknown> = {},
 ): ToolAction {
+  // Total by construction: this runs inside a capture hook, where throwing
+  // loses the whole event (and the agent never sees the failure). An agent
+  // that omits the tool name, or a capture written before it was recorded,
+  // still yields a usable `other`.
+  if (typeof toolName !== 'string' || toolName.length === 0) {
+    return { kind: 'other' };
+  }
   const name = toolName.toLowerCase();
   const map = TOOLS_BY_SOURCE[source];
   if (map == null) return anyAgentAction(name, input);
