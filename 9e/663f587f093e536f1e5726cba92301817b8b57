@@ -1,0 +1,42 @@
+README.md
+  h_a0e615773b4470 88,99-100,104,110,118-127,132
+  s_070e14f73d8430::t_240fb24ea2e51d 101-103,105-109,111-117,128-131,133-136
+  s_070e14f73d8430::t_58cf1a03b91660 137
+AGENTS.md
+  s_070e14f73d8430::t_529cce5cc237cc 76
+  s_070e14f73d8430::t_553907cab08898 45-46,48-53,55-58
+  s_070e14f73d8430::t_3d4bd571155608 43-44,47,54,59
+tests/hooks/payload-robustness.test.ts
+  s_070e14f73d8430::t_4c70017a119bbf 1,6,8-114
+  s_070e14f73d8430::t_499a222a8d4b81 2-5,7
+tests/live/agents.live.ts
+  s_070e14f73d8430::t_51628dd0f6189b 4-8,10-12,14-15
+  s_070e14f73d8430::t_5be79e532b6736 108-113,116-118,178,184-190
+  s_070e14f73d8430::t_1797c42269dd2c 33-34,53-54
+  s_070e14f73d8430::t_d2e65751788b49 1-3,9,13,16-32,35-52,55-107,114-115,119-164,166-177,179-183,191-206,208-252
+  s_070e14f73d8430::t_8c7878e1044310 165,207
+vitest.live.config.ts
+  s_070e14f73d8430::t_4369ac85d66a02 1-3,5-22
+  s_070e14f73d8430::t_8c7878e1044310 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "9e663f587f093e536f1e5726cba92301817b8b57",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_070e14f73d8430": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8acabe4c-52a4-4ec7-be38-9e051170611f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
