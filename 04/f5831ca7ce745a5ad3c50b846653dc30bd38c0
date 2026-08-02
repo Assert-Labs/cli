@@ -1,0 +1,23 @@
+tests/sanitizer.test.ts
+  s_070e14f73d8430::t_d43f9947093237 72-81
+src/hooks/session-recorder.ts
+  s_070e14f73d8430::t_797cf19f5eaa0f 805-817,820-823
+src/sanitizer.ts
+  s_070e14f73d8430::t_2f706f375ffd92 3-8,80-91,119-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "04f5831ca7ce745a5ad3c50b846653dc30bd38c0",
+  "prompts": {},
+  "sessions": {
+    "s_070e14f73d8430": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8acabe4c-52a4-4ec7-be38-9e051170611f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
