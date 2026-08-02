@@ -9,10 +9,16 @@
  * associating. Exported at `@assertlabs/cli/core`.
  */
 
-import { isSessionEvent, type SessionEvent, type SessionSource } from './schema';
+import {
+  isSessionEvent,
+  type FileChange,
+  type SessionEvent,
+  type SessionSource,
+} from './schema';
 import { toolAction, type ToolAction } from './tool-actions';
 
 export type { ToolAction, ToolActionKind } from './tool-actions';
+export type { FileChange } from './schema';
 
 /** One line of blame: its content plus who authored it. */
 export interface BlameLine {
@@ -48,6 +54,8 @@ export interface ToolCall {
   input?: unknown;
   output?: string;
   error?: string;
+  /** What this call did to each file it changed, with the diff. */
+  changes?: FileChange[];
   timestamp: string;
 }
 
@@ -209,6 +217,7 @@ export function parseSession(jsonl: string): Session {
         if (tc) {
           tc.output = ev.output;
           tc.error = ev.error;
+          tc.changes = ev.changes;
         }
         break;
       }

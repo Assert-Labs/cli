@@ -227,6 +227,34 @@ describe('parseSession event guarantees', () => {
     });
   });
 
+  it('carries each call\'s file changes onto the tool call', () => {
+    const session = parseSession(
+      [
+        event({ type: 'session_start', source: 'claude-code', cwd: '/x' }),
+        event({ type: 'assistant_turn_start', turnId: 'a1' }),
+        event({
+          type: 'tool_call',
+          turnId: 'a1',
+          toolCallId: 'tc1',
+          toolName: 'Edit',
+          action: { kind: 'edit', paths: ['a.ts'] },
+        }),
+        event({
+          type: 'tool_result',
+          turnId: 'a1',
+          toolCallId: 'tc1',
+          changes: [
+            { path: 'a.ts', additions: 2, deletions: 1, patch: '@@ -1 +1,2 @@' },
+          ],
+        }),
+      ].join('\n'),
+    );
+
+    expect(session.turns[0].toolCalls[0].changes).toEqual([
+      { path: 'a.ts', additions: 2, deletions: 1, patch: '@@ -1 +1,2 @@' },
+    ]);
+  });
+
   it('drops events that lack a usable timestamp instead of ordering them arbitrarily', () => {
     const session = parseSession(
       [
