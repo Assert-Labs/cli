@@ -1,6 +1,11 @@
 import * as os from 'os';
 import * as path from 'path';
-import type { FileChange, SessionEvent, ToolCallEvent } from './schema';
+import type {
+  FileChange,
+  SessionEvent,
+  ToolCallEvent,
+  ToolResultEvent,
+} from './schema';
 import { redactedToolAction } from './tool-actions';
 
 export type RedactionTarget = 'last-tool-input' | 'last-tool-output' | 'current-turn';
@@ -72,6 +77,18 @@ function normalizeToolCall(event: ToolCallEvent, gitRoot: string): ToolCallEvent
   };
 }
 
+/** As `normalizeToolCall`, for the per-file diffs a result carries. */
+function normalizeToolResult(event: ToolResultEvent, gitRoot: string): ToolResultEvent {
+  if (!event.changes?.length) return event;
+  return {
+    ...event,
+    changes: event.changes.map((change) => ({
+      ...change,
+      path: relativeToRepo(change.path, gitRoot),
+    })),
+  };
+}
+
 function sanitizeValue(value: unknown, gitRoot: string, key?: string): unknown {
   if (key && SENSITIVE_KEY.test(key.replace(/[^a-z0-9]/gi, ''))) {
     return '[REDACTED:SENSITIVE_FIELD]';
@@ -99,9 +116,11 @@ export function sanitizeSessionEvents(
   gitRoot: string,
   directives: RedactionDirective[] = [],
 ): SessionEvent[] {
-  const normalized = events.map((event) =>
-    event.type === 'tool_call' ? normalizeToolCall(event, gitRoot) : event,
-  );
+  const normalized = events.map((event) => {
+    if (event.type === 'tool_call') return normalizeToolCall(event, gitRoot);
+    if (event.type === 'tool_result') return normalizeToolResult(event, gitRoot);
+    return event;
+  });
   const projected = normalized.map(
     (event) => sanitizeValue(event, gitRoot) as SessionEvent,
   );

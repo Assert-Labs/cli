@@ -802,10 +802,25 @@ export function ensureRepoTracked(
  * transcript metadata, or null if the file isn't in a repo.
  */
 export function recordFileEdit(state: SessionState, filePath: string): string | null {
-  const fileGitRoot = findGitRoot(path.dirname(filePath));
+  // Resolve symlinks first: git reports the real root, so comparing it against
+  // a path reached through a link (/tmp on macOS, a symlinked checkout) walks
+  // out of the repo and back, yielding "../../.." instead of a repo path. The
+  // directory is resolved rather than the file, which may have just been
+  // deleted.
+  const directory = path.dirname(filePath);
+  let realDirectory = directory;
+  try {
+    realDirectory = fs.realpathSync(directory);
+  } catch {
+    /* directory is gone; the unresolved path is the best we have */
+  }
+  const fileGitRoot = findGitRoot(realDirectory);
   if (!fileGitRoot) return null;
   if (!ensureRepoTracked(state, fileGitRoot)) return null;
-  return path.relative(fileGitRoot, filePath);
+  return path.relative(
+    fileGitRoot,
+    path.join(realDirectory, path.basename(filePath)),
+  );
 }
 
 /** Canonical action kinds that change a file's contents. */

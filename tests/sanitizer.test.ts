@@ -69,6 +69,16 @@ describe('session sanitizer', () => {
     expect(output).not.toContain('hunter2');
   });
 
+  it('makes per-file change paths relative to the repo being published into', () => {
+    const jsonl = JSON.stringify({
+      type: 'tool_result', timestamp: 't1', sessionId: 's1', turnId: 'a1',
+      toolCallId: 'tc1',
+      changes: [{ path: '/repo/src/a.ts', additions: 1, deletions: 0 }],
+    });
+    const event = JSON.parse(sanitizeSessionJsonl(jsonl, '/repo'));
+    expect(event.changes[0].path).toBe('src/a.ts')
+  });
+
   it('drops the changed content but keeps how much changed, when redacted', () => {
     const jsonl = [
       JSON.stringify({
