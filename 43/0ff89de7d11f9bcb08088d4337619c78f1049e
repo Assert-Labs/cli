@@ -1,0 +1,19 @@
+package.json
+  s_070e14f73d8430::t_c09de272ae2fcf 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "430ff89de7d11f9bcb08088d4337619c78f1049e",
+  "prompts": {},
+  "sessions": {
+    "s_070e14f73d8430": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8acabe4c-52a4-4ec7-be38-9e051170611f",
+        "model": "unknown"
+      },
+      "human_author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
