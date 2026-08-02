@@ -22,7 +22,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { parseSession } from '../../src/core';
-import { blameFile } from '../../src/hooks/session-recorder';
+import {
+  blameFile,
+  captureDisabled,
+  capturePrivate,
+} from '../../src/hooks/session-recorder';
 import { SESSION_FORMAT_VERSION, type SessionEvent } from '../../src/schema';
 
 interface LiveAgent {
@@ -161,8 +165,13 @@ function forgetSession(sessionId: string): void {
 
 describe('live agent capture', () => {
   beforeAll(() => {
-    if (process.env.ASSERT_DISABLE) {
-      throw new Error('ASSERT_DISABLE is set, so live capture cannot be tested');
+    if (captureDisabled()) {
+      throw new Error('capture is disabled; run `assert enable` to run these');
+    }
+    // Private mode captures centrally but writes nothing into the repo, which
+    // is the only thing these assert on.
+    if (capturePrivate()) {
+      throw new Error('capture is private; run `assert public` to run these');
     }
   });
 
