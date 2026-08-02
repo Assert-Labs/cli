@@ -1019,18 +1019,45 @@ function resolveSessionFile(state: SessionState, transcriptPath?: string): strin
   const stitched = path.join(getSessionsDir(), `${state.sessionId}.jsonl`);
   if (!transcriptPath || state.source !== 'claude-code') return stitched;
   try {
-    const lifecycleEvents = fs
+    const stitchedEvents = fs
       .readFileSync(stitched, 'utf-8')
       .split('\n')
       .filter((line) => line.trim())
-      .map((line) => JSON.parse(line) as SessionEvent)
-      .filter((event) =>
-        ['session_start', 'session_resume', 'session_end'].includes(event.type),
-      );
+      .map((line) => JSON.parse(line) as SessionEvent);
+    const lifecycleEvents = stitchedEvents.filter((event) =>
+      ['session_start', 'session_resume', 'session_end'].includes(event.type),
+    );
+
+    // The transcript describes what the model did; only the hooks saw the file
+    // system while each call ran. Carry that across so a Claude session
+    // produces the same model as every other agent, rather than one built from
+    // whichever source happened to be authoritative. Both name a call by
+    // Claude's `tool_use_id`.
+    const observed = new Map(
+      stitchedEvents
+        .filter((event) => event.type === 'tool_result')
+        .map((event) => [event.toolCallId, event]),
+    );
+    const merged = normalizeClaudeTranscript(
+      fs.readFileSync(transcriptPath, 'utf-8'),
+      state.sessionId,
+    ).map((event) => {
+      if (event.type !== 'tool_result') return event;
+      const hooked = observed.get(event.toolCallId);
+      if (hooked?.type !== 'tool_result') return event;
+      observed.delete(event.toolCallId);
+      return {
+        ...event,
+        ...(hooked.changes ? { changes: hooked.changes } : {}),
+        ...(hooked.filesModified ? { filesModified: hooked.filesModified } : {}),
+      };
+    });
+    // A result the transcript has not written yet still has observations worth
+    // keeping; parseSession ignores one whose call it cannot find.
     const events = [
-      ...normalizeClaudeTranscript(
-        fs.readFileSync(transcriptPath, 'utf-8'),
-        state.sessionId,
+      ...merged,
+      ...[...observed.values()].filter(
+        (event) => event.type === 'tool_result' && event.changes != null,
       ),
       ...lifecycleEvents,
     ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));

@@ -352,6 +352,66 @@ describe('claude-code hook adapter', () => {
     ]);
   });
 
+  it('keeps per-call changes when the session is built from the transcript', async () => {
+    // Claude sessions are published from Claude's own transcript, which knows
+    // nothing about the file system. Without carrying the hooks' observations
+    // across, this agent alone would lose them.
+    const transcriptPath = path.join(home, 'transcript.jsonl');
+    const filePath = path.join(repo, 'feature.ts');
+    const transcript = [
+      {
+        type: 'user',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        message: { role: 'user', content: 'write it' },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-01-01T00:00:01.000Z',
+        message: {
+          id: 'turn-1',
+          model: 'claude-opus-4-5-20251101',
+          content: [
+            { type: 'tool_use', id: 'toolu_abc', name: 'Write', input: { file_path: filePath } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        timestamp: '2026-01-01T00:00:02.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'toolu_abc', content: 'ok' }],
+        },
+      },
+    ];
+    fs.writeFileSync(
+      transcriptPath,
+      transcript.map((event) => JSON.stringify(event)).join('\n') + '\n',
+    );
+
+    await hook('SessionStart', { transcript_path: transcriptPath });
+    await hook('UserPromptSubmit', { prompt: 'write it' });
+    await hook('PreToolUse', {
+      tool_name: 'Write',
+      tool_use_id: 'toolu_abc',
+      tool_input: { file_path: filePath },
+    });
+    write('feature.ts', 'export const x = 1;\n');
+    await hook('PostToolUse', {
+      tool_name: 'Write',
+      tool_use_id: 'toolu_abc',
+      tool_input: { file_path: filePath },
+    });
+    await hook('Stop', { transcript_path: transcriptPath });
+
+    const result = readEvents('s1').find(
+      (event) => event.type === 'tool_result' && event.toolCallId === 'toolu_abc',
+    );
+    expect(result.changes).toEqual([
+      expect.objectContaining({ path: 'feature.ts', additions: 1, deletions: 0 }),
+    ]);
+  });
+
   it('does not record when capture is disabled', async () => {
     setCaptureDisabled(true);
     try {

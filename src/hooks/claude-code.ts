@@ -48,6 +48,8 @@ interface ClaudeCodePreToolUse {
   session_id: string;
   tool_name: string;
   tool_input: Record<string, unknown>;
+  /** Claude's own id for the call, and the same id its transcript uses. */
+  tool_use_id?: string;
 }
 
 interface ClaudeCodePostToolUse {
@@ -56,6 +58,7 @@ interface ClaudeCodePostToolUse {
   tool_input: Record<string, unknown>;
   tool_output?: string;
   tool_error?: string;
+  tool_use_id?: string;
 }
 
 interface ClaudeCodeUserPromptSubmit {
@@ -115,7 +118,9 @@ export function handlePreToolUse(data: ClaudeCodePreToolUse): void {
   if (!state) return;
 
   const turnId = ensureTurn(state);
-  const toolCallId = createToolCallId();
+  // Claude's own id, so these events line up with the transcript this session
+  // is published from, and so concurrent calls to one tool stay distinct.
+  const toolCallId = data.tool_use_id ?? createToolCallId();
   const event: ToolCallEvent = {
     type: 'tool_call',
     timestamp: new Date().toISOString(),
@@ -129,7 +134,7 @@ export function handlePreToolUse(data: ClaudeCodePreToolUse): void {
   writeEvent(session_id, event);
 
   beginToolCallEdit(state, toolCallId, toolAction(SOURCE, tool_name, tool_input));
-  state.pendingToolCalls.set(tool_name, toolCallId);
+  state.pendingToolCalls.set(data.tool_use_id ?? tool_name, toolCallId);
   saveState(state);
 }
 
@@ -139,7 +144,9 @@ export function handlePostToolUse(data: ClaudeCodePostToolUse): void {
   const state = loadState(session_id, SOURCE);
   if (!state) return;
 
-  const toolCallId = state.pendingToolCalls.get(tool_name) || createToolCallId();
+  const pendingKey = data.tool_use_id ?? tool_name;
+  const toolCallId =
+    data.tool_use_id ?? state.pendingToolCalls.get(pendingKey) ?? createToolCallId();
 
   const tool_response = ((data as any).tool_response || {}) as Record<string, unknown>;
   const tool_output = (tool_response.stdout as string) || undefined;
@@ -166,7 +173,7 @@ export function handlePostToolUse(data: ClaudeCodePostToolUse): void {
   };
   writeEvent(session_id, event);
 
-  state.pendingToolCalls.delete(tool_name);
+  state.pendingToolCalls.delete(pendingKey);
   saveState(state);
 }
 
