@@ -18,7 +18,8 @@ import {
   saveState,
   startOrResumeSession,
   syncSession,
-  recordActionFiles,
+  beginToolCallEdit,
+  changesForToolCall,
   resolveActionPaths,
   writeEvent,
   captureDisabled,
@@ -128,6 +129,7 @@ export function handlePreToolUse(data: CodexPreToolUse): void {
   };
   writeEvent(session_id, event);
 
+  beginToolCallEdit(state, toolCallId, toolAction(SOURCE, tool_name, tool_input));
   state.pendingToolCalls.set(tool_name, toolCallId);
   saveState(state);
 }
@@ -151,8 +153,9 @@ export function handlePostToolUse(data: CodexPostToolUse): void {
   // (multi-repo aware) from the canonical action's paths. Attribution itself
   // comes from the git diff, not this field, so an unregistered tool just
   // means slightly less transcript metadata.
-  const filesModified = recordActionFiles(
+  const { changes, filesModified } = changesForToolCall(
     state,
+    toolCallId,
     toolAction(SOURCE, tool_name, tool_input),
   );
 
@@ -165,6 +168,7 @@ export function handlePostToolUse(data: CodexPostToolUse): void {
     output: tool_output,
     error: tool_error,
     filesModified,
+    changes,
   };
   writeEvent(session_id, event);
 

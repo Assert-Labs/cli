@@ -299,6 +299,59 @@ describe('claude-code hook adapter', () => {
     expect(attribution.turnId).toBeDefined();
   });
 
+  it('records the diff of each individual edit', async () => {
+    // Per-turn attribution is taken after the whole turn, so an edit a later
+    // call revises leaves no separate trace there. This is the only record of
+    // what one call did.
+    write('edited.ts', 'one\ntwo\nthree\n');
+    git('add .');
+    git('commit -m base');
+    const filePath = path.join(repo, 'edited.ts');
+
+    await hook('SessionStart', {});
+    await hook('UserPromptSubmit', { prompt: 'edit twice' });
+
+    await hook('PreToolUse', { tool_name: 'Edit', tool_input: { file_path: filePath } });
+    write('edited.ts', 'one\nTWO\nthree\nfour\n');
+    await hook('PostToolUse', { tool_name: 'Edit', tool_input: { file_path: filePath } });
+
+    // A second call revising the same file must be measured on its own.
+    await hook('PreToolUse', { tool_name: 'Edit', tool_input: { file_path: filePath } });
+    write('edited.ts', 'one\nTWO\nthree\n');
+    await hook('PostToolUse', { tool_name: 'Edit', tool_input: { file_path: filePath } });
+    await hook('Stop', {});
+
+    const results = readEvents('s1').filter((event) => event.type === 'tool_result');
+    expect(results[0].changes).toEqual([
+      expect.objectContaining({ path: 'edited.ts', additions: 2, deletions: 1 }),
+    ]);
+    expect(results[1].changes).toEqual([
+      expect.objectContaining({ path: 'edited.ts', additions: 0, deletions: 1 }),
+    ]);
+    // Enough to render the change later, not just count it.
+    expect(results[0].changes[0].patch).toContain('+four');
+    expect(results[1].changes[0].patch).toContain('-four');
+  });
+
+  it('reports changes for the call that wrote, and none for the read', async () => {
+    const filePath = path.join(repo, 'feature.ts');
+    await hook('SessionStart', {});
+
+    await hook('PreToolUse', { tool_name: 'Read', tool_input: { file_path: filePath } });
+    await hook('PostToolUse', { tool_name: 'Read', tool_input: { file_path: filePath } });
+
+    await hook('PreToolUse', { tool_name: 'Write', tool_input: { file_path: filePath } });
+    write('feature.ts', 'export const x = 1;\n');
+    await hook('PostToolUse', { tool_name: 'Write', tool_input: { file_path: filePath } });
+    await hook('Stop', {});
+
+    const results = readEvents('s1').filter((event) => event.type === 'tool_result');
+    expect(results[0].changes).toBeUndefined();
+    expect(results[1].changes).toEqual([
+      expect.objectContaining({ path: 'feature.ts', additions: 1, deletions: 0 }),
+    ]);
+  });
+
   it('does not record when capture is disabled', async () => {
     setCaptureDisabled(true);
     try {

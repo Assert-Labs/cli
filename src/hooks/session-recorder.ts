@@ -43,10 +43,16 @@ import {
   type SessionEndEvent,
   type LineOwnership,
   type LineAttributionEvent,
+  type FileChange,
   SESSION_FORMAT_VERSION,
   serializeSessionEvent,
 } from '../schema';
 import { type ToolAction } from '../tool-actions';
+import {
+  clearPendingEdits,
+  collectEditChanges,
+  stashBeforeEdit,
+} from '../file-edits';
 import { normalizeClaudeTranscript } from '../transcript';
 import {
   sanitizeSessionJsonl,
@@ -800,6 +806,60 @@ export function recordFileEdit(state: SessionState, filePath: string): string | 
   if (!fileGitRoot) return null;
   if (!ensureRepoTracked(state, fileGitRoot)) return null;
   return path.relative(fileGitRoot, filePath);
+}
+
+/** Canonical action kinds that change a file's contents. */
+const MUTATING_KINDS: ReadonlySet<ToolAction['kind']> = new Set([
+  'edit',
+  'write',
+  'delete',
+]);
+
+/** Absolute paths a call is about to change, if any. */
+function mutatedPaths(state: SessionState, action: ToolAction): string[] {
+  if (!MUTATING_KINDS.has(action.kind)) return [];
+  return resolveActionPaths(action, state.cwd).paths ?? [];
+}
+
+/**
+ * Record each file's contents before a call changes them. Pairs with
+ * `changesForToolCall`, which turns them into a diff once the call finishes.
+ */
+export function beginToolCallEdit(
+  state: SessionState,
+  toolCallId: string,
+  action: ToolAction,
+): void {
+  stashBeforeEdit(
+    getSessionsDir(),
+    state.sessionId,
+    toolCallId,
+    mutatedPaths(state, action),
+  );
+}
+
+/**
+ * What a finished call did to each file it changed, and the repo-relative
+ * paths, for `tool_result`.
+ */
+export function changesForToolCall(
+  state: SessionState,
+  toolCallId: string,
+  action: ToolAction,
+): { changes?: FileChange[]; filesModified?: string[] } {
+  const paths = mutatedPaths(state, action);
+  const changes = collectEditChanges(
+    getSessionsDir(),
+    state.sessionId,
+    toolCallId,
+    paths,
+    (filePath) => recordFileEdit(state, filePath),
+  );
+  const filesModified = recordActionFiles(state, action);
+  return {
+    ...(changes.length ? { changes } : {}),
+    ...(filesModified?.length ? { filesModified } : {}),
+  };
 }
 
 /**

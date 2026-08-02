@@ -13,7 +13,8 @@ import {
   startOrResumeSession,
   endSession,
   syncSession,
-  recordActionFiles,
+  beginToolCallEdit,
+  changesForToolCall,
   resolveActionPaths,
   writeEvent,
   captureDisabled,
@@ -127,6 +128,7 @@ export function handlePreToolUse(data: ClaudeCodePreToolUse): void {
   };
   writeEvent(session_id, event);
 
+  beginToolCallEdit(state, toolCallId, toolAction(SOURCE, tool_name, tool_input));
   state.pendingToolCalls.set(tool_name, toolCallId);
   saveState(state);
 }
@@ -145,8 +147,9 @@ export function handlePostToolUse(data: ClaudeCodePostToolUse): void {
 
   // Resolve the edited files' repos and track them (multi-repo aware). The
   // canonical action already knows which paths this tool touched.
-  const filesModified = recordActionFiles(
+  const { changes, filesModified } = changesForToolCall(
     state,
+    toolCallId,
     toolAction(SOURCE, tool_name, tool_input),
   );
 
@@ -159,6 +162,7 @@ export function handlePostToolUse(data: ClaudeCodePostToolUse): void {
     output: tool_output,
     error: tool_error,
     filesModified,
+    changes,
   };
   writeEvent(session_id, event);
 

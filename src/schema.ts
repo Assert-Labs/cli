@@ -104,6 +104,24 @@ export interface ToolCallEvent extends BaseEvent {
   input?: Record<string, unknown>;
 }
 
+/**
+ * What one tool call did to one file, against that file's state immediately
+ * before the call.
+ *
+ * This is the only record of an individual edit. Per-turn attribution is taken
+ * after the whole turn, so an edit that a later call in the same turn revises
+ * leaves no separate trace there, and nothing downstream can reconstruct the
+ * intermediate state.
+ */
+export interface FileChange {
+  /** Repo-relative POSIX path in a published capture. */
+  path: string;
+  additions: number;
+  deletions: number;
+  /** Unified diff of the change. Omitted when it exceeds `MAX_PATCH_BYTES`. */
+  patch?: string;
+}
+
 export interface ToolResultEvent extends BaseEvent {
   type: 'tool_result';
   turnId: string;
@@ -112,6 +130,8 @@ export interface ToolResultEvent extends BaseEvent {
   error?: string;
   // Files modified by this tool call
   filesModified?: string[];
+  /** Per-file diff of what this call changed. */
+  changes?: FileChange[];
 }
 
 // === Git Events ===

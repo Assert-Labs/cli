@@ -1,6 +1,6 @@
 import * as os from 'os';
 import * as path from 'path';
-import type { SessionEvent, ToolCallEvent } from './schema';
+import type { FileChange, SessionEvent, ToolCallEvent } from './schema';
 import { redactedToolAction } from './tool-actions';
 
 export type RedactionTarget = 'last-tool-input' | 'last-tool-output' | 'current-turn';
@@ -89,6 +89,11 @@ function sanitizeValue(value: unknown, gitRoot: string, key?: string): unknown {
   return value;
 }
 
+/** Keep how much a call changed, drop the changed content itself. */
+function withoutPatches(changes: FileChange[] | undefined) {
+  return changes?.map(({ patch: _patch, ...rest }) => rest);
+}
+
 export function sanitizeSessionEvents(
   events: SessionEvent[],
   gitRoot: string,
@@ -138,6 +143,7 @@ export function sanitizeSessionEvents(
       if (result?.type === 'tool_result') {
         result.output = '[REDACTED:AGENT]';
         result.error = result.error ? '[REDACTED:AGENT]' : undefined;
+        result.changes = withoutPatches(result.changes);
       }
     }
     if (directive.target !== 'current-turn') continue;
@@ -176,6 +182,7 @@ export function sanitizeSessionEvents(
       if (event.type === 'tool_result') {
         event.output = '[REDACTED:AGENT]';
         event.error = event.error ? '[REDACTED:AGENT]' : undefined;
+        event.changes = withoutPatches(event.changes);
       }
     }
   }

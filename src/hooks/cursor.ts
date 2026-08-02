@@ -23,6 +23,8 @@ import {
   startOrResumeSession,
   endSession,
   syncSession,
+  beginToolCallEdit,
+  changesForToolCall,
   recordActionFiles,
   resolveActionPaths,
   writeEvent,
@@ -211,6 +213,7 @@ export function handlePreToolUse(data: CursorToolUse): void {
 
   // Cursor gives a stable tool_use_id, so key pending calls on it and the result
   // matches even when the same tool runs twice in a turn.
+  beginToolCallEdit(state, toolCallId, cursorAction(data));
   state.pendingToolCalls.set(data.tool_use_id ?? data.file_path ?? toolName, toolCallId);
   saveState(state);
 }
@@ -224,7 +227,11 @@ export function handlePostToolUse(data: CursorToolUse): void {
   const toolCallId = state.pendingToolCalls.get(key) || createToolCallId();
 
   // Track edits against their own repo (multi-repo aware).
-  const filesModified = recordActionFiles(state, cursorAction(data));
+  const { changes, filesModified } = changesForToolCall(
+    state,
+    toolCallId,
+    cursorAction(data),
+  );
 
   const event: ToolResultEvent = {
     type: 'tool_result',
@@ -235,6 +242,7 @@ export function handlePostToolUse(data: CursorToolUse): void {
     output: data.tool_output ?? (data.success ? 'Edit successful' : undefined),
     error: data.error,
     filesModified,
+    changes,
   };
   writeEvent(state.sessionId, event);
 

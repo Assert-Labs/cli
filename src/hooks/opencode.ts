@@ -26,7 +26,8 @@ import {
   startOrResumeSession,
   endSession,
   syncSession,
-  recordActionFiles,
+  beginToolCallEdit,
+  changesForToolCall,
   resolveActionPaths,
   writeEvent,
   captureDisabled,
@@ -152,6 +153,7 @@ export function handlePreToolUse(data: OpenCodePreToolUse): void {
 
   // OpenCode gives a stable callID per tool call — key pending calls on it so
   // the result matches even when the same tool runs concurrently.
+  beginToolCallEdit(state, toolCallId, toolAction(SOURCE, data.tool_name, data.tool_input ?? {}));
   state.pendingToolCalls.set(data.call_id || data.tool_name, toolCallId);
   saveState(state);
 }
@@ -172,8 +174,9 @@ export function handlePostToolUse(data: OpenCodePostToolUse): void {
 
   // Best-effort: surface the edited file(s) so their repo is tracked (multi-repo
   // aware). Attribution itself comes from the git diff, not this field.
-  const filesModified = recordActionFiles(
+  const { changes, filesModified } = changesForToolCall(
     state,
+    toolCallId,
     toolAction(SOURCE, data.tool_name, data.tool_input ?? {}),
   );
 
@@ -186,6 +189,7 @@ export function handlePostToolUse(data: OpenCodePostToolUse): void {
     output: tool_output,
     error: tool_error,
     filesModified,
+    changes,
   };
   writeEvent(data.session_id, event);
 

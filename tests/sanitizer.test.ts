@@ -69,6 +69,32 @@ describe('session sanitizer', () => {
     expect(output).not.toContain('hunter2');
   });
 
+  it('drops the changed content but keeps how much changed, when redacted', () => {
+    const jsonl = [
+      JSON.stringify({
+        type: 'tool_call', timestamp: 't1', sessionId: 's1', turnId: 'a1',
+        toolCallId: 'tc1', toolName: 'Edit', action: { kind: 'edit', paths: ['a.ts'] },
+      }),
+      JSON.stringify({
+        type: 'tool_result', timestamp: 't2', sessionId: 's1', turnId: 'a1',
+        toolCallId: 'tc1', output: 'ok',
+        changes: [
+          { path: 'a.ts', additions: 1, deletions: 0, patch: '+const secret = "hunter2"' },
+        ],
+      }),
+    ].join('\n');
+    const output = sanitizeSessionJsonl(jsonl, '/repo', [
+      { target: 'last-tool-output', toolCallId: 'tc1' },
+    ]);
+    const result = output
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .find((event) => event.type === 'tool_result');
+    expect(result.changes).toEqual([{ path: 'a.ts', additions: 1, deletions: 0 }]);
+    expect(output).not.toContain('hunter2');
+  });
+
   it('applies model-directed field redaction', () => {
     const jsonl = [
       JSON.stringify({
