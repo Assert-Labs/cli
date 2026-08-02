@@ -275,6 +275,30 @@ describe('claude-code hook adapter', () => {
     expect(turnFiles).toHaveLength(2);
   });
 
+  it('records what a turn did to a file, including deletions', async () => {
+    // The snapshot in `lines` only describes the file's end state, so a line
+    // the turn deleted leaves no trace in it and the state it was deleted from
+    // is not part of the capture. Only the writer holds both sides.
+    write('existing.ts', 'keep1\ndrop1\ndrop2\nkeep2\n');
+    git('add .');
+    git('commit -m base');
+
+    await hook('SessionStart', {});
+    await hook('UserPromptSubmit', { prompt: 'trim it' });
+    await hook('PreToolUse', {
+      tool_name: 'Edit',
+      tool_input: { file_path: path.join(repo, 'existing.ts') },
+    });
+    write('existing.ts', 'keep1\nkeep2\nadded\n');
+    await hook('Stop', {});
+
+    const attribution = readEvents('s1').find(
+      (event) => event.type === 'line_attribution' && event.filePath === 'existing.ts',
+    );
+    expect(attribution.churn).toEqual({ additions: 1, deletions: 2 });
+    expect(attribution.turnId).toBeDefined();
+  });
+
   it('does not record when capture is disabled', async () => {
     setCaptureDisabled(true);
     try {

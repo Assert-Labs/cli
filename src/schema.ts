@@ -171,6 +171,18 @@ export interface LineAttributionEvent extends BaseEvent {
   filePath: string;
   vcsRevision?: string;
   lines: LineOwnership[];
+  /** The assistant turn whose sync produced this snapshot. */
+  turnId?: string;
+  /**
+   * What this turn did to the file, against its state when the turn began: a
+   * diff stat, in the sense `git diff --stat` means it.
+   *
+   * Recorded here because it cannot be recovered later. `lines` describes the
+   * file's end state, so lines the turn deleted leave no trace in it, and the
+   * state they were deleted from is not part of the capture. Only the writer
+   * still holds both sides.
+   */
+  churn?: { additions: number; deletions: number };
 }
 
 // === Union Types ===

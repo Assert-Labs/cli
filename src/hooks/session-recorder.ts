@@ -343,6 +343,27 @@ function latestTurn(sessionFile: string): { turnId?: string; model?: string; pro
 
 const EMPTY_LINE_HASH = hashLine('');
 
+/**
+ * Lines added and removed between two states of a file, matched by content
+ * hash. Relocating a line counts as neither, which is what makes this a churn
+ * figure rather than a positional diff.
+ */
+function churnBetween(before: FileSnapshot, after: FileSnapshot) {
+  const remaining = new Map<string, number>();
+  for (const line of before.lines) {
+    remaining.set(line.hash, (remaining.get(line.hash) ?? 0) + 1);
+  }
+  let additions = 0;
+  for (const line of after.lines) {
+    const count = remaining.get(line.hash) ?? 0;
+    if (count > 0) remaining.set(line.hash, count - 1);
+    else additions++;
+  }
+  let deletions = 0;
+  for (const count of remaining.values()) deletions += count;
+  return { additions, deletions };
+}
+
 /** A snapshot with no lines — a file that didn't exist (all of `after` is new). */
 function emptySnapshot(filePath: string): FileSnapshot {
   return { filePath, lines: [], contentHash: '' };
@@ -652,6 +673,10 @@ function fileAttributions(
       filePath: f,
       vcsRevision: repo.startRef,
       lines: ownership,
+      ...(turn.turnId ? { turnId: turn.turnId } : {}),
+      // `curSnap` is this turn's starting point: the session's own previous
+      // snapshot, or the file at the session's baseline ref.
+      churn: churnBetween(curSnap, endSnap),
     });
 
     // Agent's own lines (excluding blanks, which carry no identity) for traces.
