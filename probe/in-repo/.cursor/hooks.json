@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "./.hook-probe/log.sh cursor sessionStart"
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "./.hook-probe/log.sh cursor beforeSubmitPrompt"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "./.hook-probe/log.sh cursor preToolUse"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "./.hook-probe/log.sh cursor postToolUse"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "./.hook-probe/log.sh cursor afterFileEdit"
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "./.hook-probe/log.sh cursor afterAgentResponse"
+      }
+    ],
+    "stop": [
+      {
+        "command": "./.hook-probe/log.sh cursor stop"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "./.hook-probe/log.sh cursor sessionEnd"
+      }
+    ]
+  }
+}

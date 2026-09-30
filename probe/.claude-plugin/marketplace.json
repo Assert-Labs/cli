@@ -1,0 +1,14 @@
+{
+  "name": "assert-probe",
+  "owner": {
+    "name": "Assert Labs"
+  },
+  "plugins": [
+    {
+      "name": "hook-probe",
+      "source": "./",
+      "description": "Hook event probe"
+    }
+  ],
+  "description": "Throwaway hook event probe"
+}

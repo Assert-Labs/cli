@@ -1,0 +1,6 @@
+{
+  "name": "hook-probe",
+  "version": "0.0.1",
+  "description": "Hook event probe",
+  "hooks": "./hooks/codex.json"
+}

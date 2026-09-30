@@ -1,0 +1,9 @@
+{
+  "name": "hook-probe",
+  "version": "0.0.1",
+  "description": "Throwaway probe: logs every hook event to .hook-probe/events.jsonl",
+  "author": {
+    "name": "Assert Labs"
+  },
+  "hooks": "./hooks/claude.json"
+}

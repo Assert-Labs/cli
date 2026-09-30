@@ -1,0 +1,9 @@
+{
+  "name": "hook-probe",
+  "version": "0.0.1",
+  "description": "Hook event probe",
+  "author": {
+    "name": "Assert Labs"
+  },
+  "hooks": "./hooks/cursor.json"
+}
