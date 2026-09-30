@@ -54,8 +54,3 @@ Before requesting or re-requesting a human reviewer, please do your best to take
 - Make sure that the PR is mergeable: fix CI failures and resolve merge conflicts with main.
 - Respond to automated feedback: we may use automated reviewers to catch issues. Please do your best to respond to comments from these reviews by either responding directly to their feedback and/or pushing changes to address the issues they surface.
 
----
-
-## Discord
-
-[Join our server](https://discord.gg/YqKKrBmam) to ask questions and engage in discussions!
