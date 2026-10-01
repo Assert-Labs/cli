@@ -1371,9 +1371,9 @@ export function pendingUploads(): { count: number; lastError?: string } {
 }
 
 /**
- * Upload what the outbox holds, within a time budget. Entries for repos with
- * no token configured are left queued. Called at turn boundaries by the hook
- * entrypoint and in full by `assert push`; never throws.
+ * Upload what the outbox holds, within a time budget. Called at turn
+ * boundaries by the hook entrypoint and in full by `assert push`; never
+ * throws. Uploads are keyed by repo (see uploader), so no token is required.
  */
 export async function flushOutbox(
   options: { budgetMs?: number; force?: boolean } = {},
@@ -1384,9 +1384,7 @@ export async function flushOutbox(
     const key = `${config.apiUrl}\n${config.token ?? ''}`;
     let uploader = uploaders.get(key);
     if (uploader === undefined) {
-      uploader = config.token
-        ? createUploader({ apiUrl: config.apiUrl, token: config.token, version: VERSION })
-        : null;
+      uploader = createUploader({ apiUrl: config.apiUrl, token: config.token, version: VERSION });
       uploaders.set(key, uploader);
     }
     return uploader;

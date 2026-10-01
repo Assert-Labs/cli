@@ -1,0 +1,68 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh \"$CLAUDE_PLUGIN_ROOT/scripts/run.sh\" devin SessionStart",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh \"$CLAUDE_PLUGIN_ROOT/scripts/run.sh\" devin SessionEnd",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh \"$CLAUDE_PLUGIN_ROOT/scripts/run.sh\" devin UserPromptSubmit",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh \"$CLAUDE_PLUGIN_ROOT/scripts/run.sh\" devin PreToolUse",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh \"$CLAUDE_PLUGIN_ROOT/scripts/run.sh\" devin PostToolUse",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh \"$CLAUDE_PLUGIN_ROOT/scripts/run.sh\" devin Stop",
+          "timeout": 30
+        }
+      ]
+    }
+  ]
+}

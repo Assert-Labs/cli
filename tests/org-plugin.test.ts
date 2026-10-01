@@ -3,7 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
-import { generateOrgPlugin, claudeManagedSettings, ORG_PLUGIN_REPO } from '../src/org-plugin';
+import {
+  generateOrgPlugin,
+  generateMarketplaceManifests,
+  claudeManagedSettings,
+  devinRequiredPlugin,
+  ORG_PLUGIN_REPO,
+} from '../src/org-plugin';
 import { DEVIN_HOOK_EVENTS } from '../src/plugins';
 
 describe('org plugin', () => {
@@ -14,9 +20,6 @@ describe('org plugin', () => {
     expect(parse('.claude-plugin/plugin.json')).toMatchObject({ name: 'assert', version: '9.9.9', hooks: './hooks/claude.json' });
     expect(parse('.codex-plugin/plugin.json')).toMatchObject({ name: 'assert', hooks: './hooks/codex.json' });
     expect(parse('.cursor-plugin/plugin.json')).toMatchObject({ name: 'assert', hooks: './hooks/cursor.json' });
-    expect(parse('.claude-plugin/marketplace.json').plugins).toEqual([
-      expect.objectContaining({ name: 'assert', source: './' }),
-    ]);
     expect(files['dist/cli.mjs']).toBe('// bundle');
     expect(files['README.md']).toContain(ORG_PLUGIN_REPO);
   });
@@ -34,6 +37,20 @@ describe('org plugin', () => {
     const devin = parse('hooks.json');
     expect(Object.keys(devin)).toEqual([...DEVIN_HOOK_EVENTS]);
     expect(devin.PreToolUse[0].hooks[0].command).toBe('sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" devin PreToolUse');
+  });
+
+  it('makes this repository the marketplace, with the plugin at ./plugin', () => {
+    const manifests = generateMarketplaceManifests();
+    for (const rel of ['.claude-plugin/marketplace.json', '.cursor-plugin/marketplace.json']) {
+      expect(JSON.parse(manifests[rel]).plugins).toEqual([
+        expect.objectContaining({ name: 'assert', source: './plugin' }),
+      ]);
+    }
+    expect(JSON.parse(devinRequiredPlugin()).requiredPlugins[0]).toEqual({
+      source: 'git-subdir',
+      url: `https://github.com/${ORG_PLUGIN_REPO}.git`,
+      path: 'plugin',
+    });
   });
 
   it('managed settings enable the plugin and make cloud sessions wait for it', () => {

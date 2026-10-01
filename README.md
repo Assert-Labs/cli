@@ -17,8 +17,8 @@
     <a href="https://docs.assert.dev">Documentation</a>
   </p>
   <p align="center">
-    <a href="https://www.npmjs.com/package/@assertlabs/cli"><img src="https://img.shields.io/npm/v/@assertlabs/cli.svg?v=1" alt="npm version"></a>
-    <a href="https://github.com/Assert-Labs/cli/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@assertlabs/cli.svg?v=1" alt="license"></a>
+    <a href="https://www.npmjs.com/package/@assertlabs/cli"><img src="https://img.shields.io/npm/v/%40assertlabs%2Fcli" alt="npm version"></a>
+    <a href="https://github.com/Assert-Labs/cli/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/%40assertlabs%2Fcli" alt="license"></a>
     <a href="https://github.com/Assert-Labs/cli/actions/workflows/ci.yml"><img src="https://github.com/Assert-Labs/cli/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
     <a href="https://github.com/Assert-Labs/cli/actions/workflows/release.yml"><img src="https://github.com/Assert-Labs/cli/actions/workflows/release.yml/badge.svg" alt="release"></a>
   </p>
@@ -93,38 +93,50 @@ version-specific features), or `assert init <agent>` to (re)install just one.
 
 ### Cloud agents
 
-Hosted agents can't run `assert init`. Set capture up once per org (Claude
-Code, Devin) or once per repo (Cursor), and give the agent an `ASSERT_TOKEN`.
+Hosted agents can't run `assert init`. Point each host at this repository once
+and every session on every repo is captured.
 
-**Claude Code** — at [claude.ai/admin-settings/claude-code](https://claude.ai/admin-settings/claude-code),
-paste into **Managed settings**:
+**Claude Code** — [claude.ai/admin-settings/claude-code](https://claude.ai/admin-settings/claude-code)
+→ **Managed settings**:
 
 ```json
 {
-  "env": { "CLAUDE_CODE_SYNC_PLUGIN_INSTALL": "1", "ASSERT_TOKEN": "<your token>" },
-  "extraKnownMarketplaces": {
-    "assert": { "source": { "source": "github", "repo": "Assert-Labs/plugin" }, "autoUpdate": true }
+  "env": {
+    "CLAUDE_CODE_SYNC_PLUGIN_INSTALL": "1"
   },
-  "enabledPlugins": { "assert@assert": true }
+  "extraKnownMarketplaces": {
+    "assert": {
+      "source": { "source": "github", "repo": "Assert-Labs/cli" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "assert@assert": true
+  }
 }
 ```
 
-**Devin** — add `ASSERT_TOKEN` as an org secret, then install the plugin from
-the org manifest:
+**Devin** — `devin plugins install Assert-Labs/cli#plugin`, or in the org manifest:
 
 ```json
-{ "requiredPlugins": [{ "source": "github", "repo": "Assert-Labs/plugin",
-  "env": { "ASSERT_TOKEN": "secret:org:ASSERT_TOKEN" } }] }
+{
+  "requiredPlugins": [
+    {
+      "source": "git-subdir",
+      "url": "https://github.com/Assert-Labs/cli.git",
+      "path": "plugin"
+    }
+  ]
+}
 ```
 
-**Cursor** — cloud agents read hooks from the repo. In the repo, run and commit:
+**Cursor** — Dashboard → **Plugins & MCPs** → **Team Marketplaces** →
+**Add Marketplace** → **Import from Repo** → `https://github.com/Assert-Labs/cli`,
+then set **assert** to **Required**. Cloud agents only run hooks committed to
+the repo, so for those also run `assert init --repo` once per repo.
 
-```bash
-assert init --repo
-```
-
-Then add `ASSERT_TOKEN` under **Cloud Agents → Secrets** in the Cursor dashboard.
-The same commit also covers Claude Code and Devin sessions on that repo.
+**Codex** (local) — Admin → **Plugins** → **Add** → **Import marketplace** →
+`https://github.com/Assert-Labs/cli`.
 
 ### Requirements
 

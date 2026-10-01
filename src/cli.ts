@@ -628,7 +628,7 @@ async function cmdStatus(): Promise<void> {
   console.log(`Publish mode: ${config.publish}`);
   if (config.publish === 'assert') {
     console.log(`API: ${config.apiUrl}`);
-    console.log(`Token: ${config.token ? 'configured' : 'missing (run `assert login --token <token>`)'}`);
+    console.log(`Token: ${config.token ? 'configured' : 'none (uploads are keyed by repo)'}`);
     const pending = pendingUploads();
     console.log(
       `Pending uploads: ${pending.count}${pending.lastError ? ` (last error: ${pending.lastError})` : ''}`,
@@ -719,14 +719,7 @@ async function cmdPush(): Promise<void> {
   }
   const result = await flushOutbox({ budgetMs: 10 * 60 * 1000, force: true });
   log(`Uploaded ${result.uploaded} file(s); ${result.remaining} pending.`);
-  if (result.remaining > 0) {
-    const config = loadConfig(findGitRoot(process.cwd()) ?? undefined);
-    if (!config.token) {
-      warn('no token configured; run `assert login --token <token>` or set ASSERT_TOKEN.');
-    } else if (result.lastError) {
-      warn(`last error: ${result.lastError}`);
-    }
-  }
+  if (result.remaining > 0 && result.lastError) warn(`last error: ${result.lastError}`);
 }
 
 /** Store the API token in ~/.assert/config.json. */
@@ -1275,7 +1268,7 @@ Usage:
   assert session <id>            Show a session's turns (prompts/reasoning/tools) [--json]
   assert turn <id> <turn-id>     Show one turn, fully resolved [--json] [--context]
   assert status                  Show current status
-  assert login --token <token>   Save the Assert API token (uploads need it)
+  assert login --token <token>   Save an Assert API token (optional; uploads are keyed by repo)
   assert logout                  Remove the saved token
   assert config [set|unset ...]  Show or change publish mode (assert|repo|none) and API URL
   assert push                    Upload sessions still waiting in the outbox

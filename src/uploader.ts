@@ -51,7 +51,9 @@ export class UploadError extends Error {
 
 export interface UploaderOptions {
   apiUrl: string;
-  token: string;
+  /** Optional: uploads are keyed by repo and verified against the pull
+   * request server-side; a token only adds a bearer header. */
+  token?: string;
   /** CLI version, sent as the user agent. */
   version: string;
   /** Per-request timeout; hooks run on a budget. */
@@ -73,8 +75,8 @@ export function createUploader(options: UploaderOptions): Uploader {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${options.token}`,
           'user-agent': `assert-cli/${options.version}`,
+          ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
         },
         body: JSON.stringify(body),
         signal: controller.signal,

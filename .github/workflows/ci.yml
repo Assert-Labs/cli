@@ -40,3 +40,10 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # plugin/ and the marketplace manifests are committed (this repo is the
+      # plugin marketplace), so they must match the source they were built from.
+      - name: Plugin bundle is current
+        run: |
+          pnpm exec tsx scripts/build-plugin.ts
+          git diff --exit-code -- plugin .claude-plugin .cursor-plugin

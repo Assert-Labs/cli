@@ -455,20 +455,15 @@ describe('publish modes', () => {
     expect(fs.existsSync(mirror)).toBe(true);
   });
 
-  it('keeps files queued until a token exists, then uploads on push', async () => {
+  it('uploads without a token, keyed by the repo identity', async () => {
     delete process.env.ASSERT_TOKEN;
     await runHook('claude-code', 'SessionStart', payload('up2'));
     fs.writeFileSync(path.join(repo, 'new.ts'), 'x\n');
     await runHook('claude-code', 'Stop', payload('up2'));
 
-    expect(received).toEqual([]);
-    expect(listEntries().length).toBeGreaterThan(0);
-    expect(listEntries().every((e) => e.attempts === 0)).toBe(true);
-
-    process.env.ASSERT_TOKEN = 'late-token';
-    const result = await flushOutbox({ force: true });
-    expect(result.remaining).toBe(0);
+    expect(listEntries()).toEqual([]);
     expect(received).toHaveLength(1);
+    expect(received[0].body.repo).toMatchObject({ remote: 'github.com/acme/app' });
   });
 
   it('retries after a server failure without losing anything', async () => {

@@ -53,6 +53,13 @@ describe('uploader', () => {
     expect(last.body).toEqual(batch);
   });
 
+  it('sends no authorization header without a token', async () => {
+    status = 200;
+    const uploader = createUploader({ apiUrl: baseUrl, version: 'dev' });
+    await uploader.uploadSession(batch);
+    expect(received[received.length - 1].headers.authorization).toBeUndefined();
+  });
+
   it('posts redactions to the session', async () => {
     status = 200;
     const uploader = createUploader({ apiUrl: baseUrl, token: 'tok', version: 'dev' });

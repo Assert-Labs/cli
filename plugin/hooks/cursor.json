@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor sessionStart"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor sessionEnd"
+      }
+    ],
+    "stop": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor stop"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor preToolUse"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor postToolUse"
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor beforeSubmitPrompt"
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor afterAgentResponse"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run.sh\" cursor afterFileEdit"
+      }
+    ]
+  }
+}
