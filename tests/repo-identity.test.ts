@@ -9,6 +9,7 @@ import {
   getOrCreateRepoId,
   getRepoId,
   removeRepoId,
+  normalizeRemote,
 } from '../src/repo-identity';
 
 describe('repo-identity', () => {
@@ -176,5 +177,28 @@ describe('repo-identity', () => {
       expect(movedId).not.toBeNull();
       expect(movedId!.repoId).toBe(originalId!.repoId);
     });
+  });
+});
+
+describe('normalizeRemote', () => {
+  it('reduces every clone URL form to host/owner/repo', () => {
+    const forms = [
+      'git@github.com:Acme/App.git',
+      'https://github.com/acme/app.git',
+      'https://user:token@github.com/acme/app',
+      'ssh://git@github.com/acme/app.git',
+      'ssh://git@github.com:22/acme/app',
+      'https://github.com/acme/app/',
+    ];
+    for (const url of forms) expect(normalizeRemote(url), url).toBe('github.com/acme/app');
+    expect(normalizeRemote('https://gitlab.example.com/group/sub/app.git')).toBe(
+      'gitlab.example.com/group/sub/app',
+    );
+  });
+
+  it('rejects local paths and empty values', () => {
+    expect(normalizeRemote('')).toBeNull();
+    expect(normalizeRemote('/srv/git/app.git')).toBeNull();
+    expect(normalizeRemote('../app')).toBeNull();
   });
 });

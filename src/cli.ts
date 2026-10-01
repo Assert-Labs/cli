@@ -21,7 +21,17 @@ import {
   publishLocalSessions,
   addRedactionDirective,
   cleanupStaleSessions,
+  flushOutbox,
+  pendingUploads,
 } from './hooks/session-recorder';
+import {
+  loadConfig,
+  updateUserConfig,
+  isPublishMode,
+  PUBLISH_MODES,
+  userConfigPath,
+  DEFAULT_API_URL,
+} from './config';
 import type { RedactionTarget } from './sanitizer';
 import {
   claudePluginDir,
@@ -31,6 +41,8 @@ import {
   openCodePluginPath,
   piExtensionDir,
   piExtensionPath,
+  devinConfigPath,
+  upsertDevinConfigHooks,
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
@@ -54,6 +66,7 @@ import { buildTrace } from './agent-trace';
 import { type AttributionEvent, type SessionEvent, type SessionSource } from './schema';
 import { getRepoId } from './repo-identity';
 import { getSessionsDir, loadIndex } from './session-index';
+import { installRepoHooks, SHIM_PATH } from './repo-hooks';
 
 import { calculateAgentContribution, hashLine, type AttributionRecord } from './line-attribution';
 import { parseSession, getTurn, turnContext, type BlameLine } from './core';
@@ -75,9 +88,7 @@ function warn(msg: string): void {
 
 // Injected at build time via esbuild `define` (see scripts/build.mjs). Falls
 // back to 'dev' when running from source (tsx), where no define is applied.
-declare const __ASSERT_VERSION__: string;
-const VERSION: string =
-  typeof __ASSERT_VERSION__ === 'string' ? __ASSERT_VERSION__ : 'dev';
+import { VERSION } from './version';
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -125,6 +136,11 @@ function detectInstalledAgents(): string[] {
   // Pi: check for its home directory (~/.pi)
   if (fs.existsSync(path.join(home, '.pi'))) {
     detected.push('pi');
+  }
+
+  // Devin CLI: check for its config directory (~/.config/devin)
+  if (fs.existsSync(path.join(home, '.config', 'devin'))) {
+    detected.push('devin');
   }
 
   return detected;
@@ -213,6 +229,20 @@ function installOpenCodePlugin(home: string): void {
   log('✓ OpenCode');
 }
 
+function installDevinHooks(home: string): void {
+  const assertBin = path.join(home, '.assert', 'bin', 'assert');
+  const configPath = devinConfigPath(home);
+  let config: string | null = null;
+  try {
+    config = fs.readFileSync(configPath, 'utf-8');
+  } catch {
+    /* no config yet */
+  }
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, upsertDevinConfigHooks(config, assertBin));
+  log('✓ Devin');
+}
+
 function installPiPlugin(home: string): void {
   const assertBin = path.join(home, '.assert', 'bin', 'assert');
   fs.mkdirSync(piExtensionDir(home), { recursive: true });
@@ -285,7 +315,32 @@ export function resolveInitAgents(
   return agent ? [agent] : supported;
 }
 
+/**
+ * `assert init --repo`: commit capture hooks into the current repo so hosts
+ * that read hooks from the repository (Claude Code on the web, Cursor cloud
+ * agents, Devin, local Codex) capture every session on it. Nothing is
+ * installed on this machine.
+ */
+function cmdInitRepo(): void {
+  const gitRoot = findGitRoot(process.cwd());
+  if (!gitRoot) {
+    error('Not in a git repository');
+    process.exit(1);
+  }
+  const written = installRepoHooks(gitRoot, VERSION);
+  log(`Wrote repo hooks into ${gitRoot}:`);
+  for (const rel of written) console.log(`  ${rel}`);
+  console.log('');
+  log(`Commit these files. Each hook runs ${SHIM_PATH}, which installs the CLI on first use.`);
+  log('Uploads need a token: set ASSERT_TOKEN in each host\'s environment, or commit');
+  log('.assert/config.json with a repo token (`{ "token": "..." }`).');
+}
+
 async function cmdInit(agent?: string): Promise<void> {
+  if (agent === '--repo') {
+    cmdInitRepo();
+    return;
+  }
   const home = process.env.HOME || process.env.USERPROFILE || '';
   const assertDir = path.join(home, '.assert');
   const binDir = path.join(assertDir, 'bin');
@@ -344,7 +399,7 @@ async function cmdInit(agent?: string): Promise<void> {
 
   log(`Linked ${destBin} -> ${linkTarget}`);
 
-  const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
+  const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi', 'devin'];
 
   // Detection is only for messaging. We pre-place the plugin for EVERY supported
   // agent into its standard plugin directory — even agents not installed yet —
@@ -371,6 +426,8 @@ async function cmdInit(agent?: string): Promise<void> {
       installOpenCodePlugin(home);
     } else if (a === 'pi') {
       installPiPlugin(home);
+    } else if (a === 'devin') {
+      installDevinHooks(home);
     }
   }
 
@@ -386,7 +443,7 @@ async function cmdInit(agent?: string): Promise<void> {
 }
 
 async function cmdHook(agent: string, hookType: string): Promise<void> {
-  const validAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
+  const validAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi', 'devin'];
   if (!validAgents.includes(agent)) {
     error(`Unknown agent: ${agent}`);
     process.exit(1);
@@ -567,6 +624,16 @@ async function cmdStatus(): Promise<void> {
       `Publish: ${capturePrivate() ? 'private (kept out of this repo; run `assert public`)' : 'public'}`,
     );
   }
+  const config = loadConfig(gitRoot ?? undefined);
+  console.log(`Publish mode: ${config.publish}`);
+  if (config.publish === 'assert') {
+    console.log(`API: ${config.apiUrl}`);
+    console.log(`Token: ${config.token ? 'configured' : 'none (uploads are keyed by repo)'}`);
+    const pending = pendingUploads();
+    console.log(
+      `Pending uploads: ${pending.count}${pending.lastError ? ` (last error: ${pending.lastError})` : ''}`,
+    );
+  }
   console.log(`Assert version: ${VERSION}`);
   // The hooks invoke ~/.assert/bin/assert, a symlink to the installed binary.
   // If it resolves, hooks run whatever the symlink points at (kept current by
@@ -609,14 +676,15 @@ function cmdPrivate(): void {
       /* best effort — nothing to clean, or not a git repo */
     }
   }
-  log('Private mode: sessions are still captured to ~/.assert but no longer written to this repo.');
+  log('Private mode: sessions are still captured to ~/.assert but no longer published (uploaded or written to this repo).');
   if (cleaned) log('Dropped uncommitted .sessions/ changes from the working tree.');
 }
 
 /** Public mode (default): resume publishing sessions into the repo's `.sessions/`. */
 function cmdPublic(): void {
   setCapturePrivate(false);
-  log('Public mode: sessions will be written into this repo again from now on.');
+  const mode = loadConfig(findGitRoot(process.cwd()) ?? undefined).publish;
+  log(`Public mode: sessions will be published again from now on (publish mode: ${mode}).`);
 }
 
 /**
@@ -626,15 +694,92 @@ function cmdPublic(): void {
  * (hooks + lazy index); this is the manual escape hatch after a branch switch,
  * stash, or a private→public change.
  */
-function cmdSync(): void {
+async function cmdSync(): Promise<void> {
   const gitRoot = findGitRoot(process.cwd());
   if (!gitRoot) {
     error('Not in a git repository');
     process.exit(1);
   }
-  const promoted = publishLocalSessions(gitRoot);
+  const mode = loadConfig(gitRoot).publish;
+  if (mode === 'repo') {
+    const promoted = publishLocalSessions(gitRoot);
+    log(`Published ${promoted} local session(s) into .sessions/.`);
+  }
   rebuildBlameIndex(gitRoot);
-  log(`Synced: published ${promoted} local session(s) into .sessions/, blame index rebuilt.`);
+  log('Blame index rebuilt.');
+  if (mode === 'assert') await cmdPush();
+}
+
+/** Upload everything waiting in the outbox, ignoring backoff. */
+async function cmdPush(): Promise<void> {
+  const before = pendingUploads().count;
+  if (before === 0) {
+    log('Nothing to upload.');
+    return;
+  }
+  const result = await flushOutbox({ budgetMs: 10 * 60 * 1000, force: true });
+  log(`Uploaded ${result.uploaded} file(s); ${result.remaining} pending.`);
+  if (result.dropped > 0) warn(`${result.dropped} file(s) rejected by the server and dropped.`);
+  if ((result.remaining > 0 || result.dropped > 0) && result.lastError) warn(`last error: ${result.lastError}`);
+}
+
+/** Store the API token in ~/.assert/config.json. */
+function cmdLogin(args: string[]): void {
+  const flagIndex = args.indexOf('--token');
+  const token = (flagIndex !== -1 ? args[flagIndex + 1] : undefined) ?? process.env.ASSERT_TOKEN;
+  if (!token) {
+    error('Usage: assert login --token <token>   (or set ASSERT_TOKEN)');
+    process.exitCode = 1;
+    return;
+  }
+  updateUserConfig({ token });
+  log(`Token saved to ${userConfigPath()}.`);
+  const pending = pendingUploads().count;
+  if (pending > 0) log(`${pending} file(s) are waiting; run \`assert push\` to upload them now.`);
+}
+
+function cmdLogout(): void {
+  updateUserConfig({ token: null });
+  log('Token removed. Captured sessions stay queued locally until you log in again.');
+}
+
+/**
+ * `assert config` prints the effective settings; `assert config set <key>
+ * <value>` and `assert config unset <key>` edit the user config (apiUrl,
+ * publish). Tokens go through `assert login`.
+ */
+function cmdConfig(args: string[]): void {
+  const [action, key, value] = args;
+  const editable = ['apiUrl', 'publish'] as const;
+  type Editable = (typeof editable)[number];
+  const isEditable = (k: string | undefined): k is Editable =>
+    (editable as readonly string[]).includes(k ?? '');
+  if (!action) {
+    const gitRoot = findGitRoot(process.cwd());
+    const config = loadConfig(gitRoot ?? undefined);
+    console.log(`publish: ${config.publish}`);
+    console.log(`apiUrl:  ${config.apiUrl}`);
+    console.log(`token:   ${config.token ? 'configured' : 'none'}`);
+    console.log(`(user config: ${userConfigPath()}${gitRoot ? `, repo config: ${path.join(gitRoot, '.assert', 'config.json')}` : ''})`);
+    return;
+  }
+  if (action === 'set' && isEditable(key) && value) {
+    if (key === 'publish' && !isPublishMode(value)) {
+      error(`publish must be one of: ${PUBLISH_MODES.join(', ')}`);
+      process.exitCode = 1;
+      return;
+    }
+    updateUserConfig({ [key]: value });
+    log(`Set ${key} = ${value}`);
+    return;
+  }
+  if (action === 'unset' && isEditable(key)) {
+    updateUserConfig({ [key]: null });
+    log(`Unset ${key} (default: ${key === 'apiUrl' ? DEFAULT_API_URL : 'assert'})`);
+    return;
+  }
+  error('Usage: assert config | assert config set <apiUrl|publish> <value> | assert config unset <apiUrl|publish>');
+  process.exitCode = 1;
 }
 
 /**
@@ -1112,6 +1257,7 @@ assert - Capture AI agent sessions and track code attribution
 
 Usage:
   assert init [agent]            Initialize hooks globally (all agents if none specified)
+  assert init --repo             Commit capture hooks into this repo (cloud agents read them)
   assert sessions                List sessions in current repo
   assert sessions --all          List all sessions (central storage)
   assert show <session-id>       Show session details
@@ -1123,9 +1269,13 @@ Usage:
   assert session <id>            Show a session's turns (prompts/reasoning/tools) [--json]
   assert turn <id> <turn-id>     Show one turn, fully resolved [--json] [--context]
   assert status                  Show current status
-  assert private                 Keep capturing locally, but stop writing sessions into this repo
-  assert public                  Resume writing sessions into this repo (default)
-  assert sync                    Publish local sessions into the repo + rebuild the blame index
+  assert login --token <token>   Save an Assert API token (optional; uploads are keyed by repo)
+  assert logout                  Remove the saved token
+  assert config [set|unset ...]  Show or change publish mode (assert|repo|none) and API URL
+  assert push                    Upload sessions still waiting in the outbox
+  assert private                 Keep capturing locally, but stop publishing sessions
+  assert public                  Resume publishing sessions (default)
+  assert sync                    Publish pending sessions + rebuild the blame index
   assert cleanup [--hours <n>]   Mark stale still-open sessions ended (default idle > 24h)
   assert redact <target>         Redact current-turn, last-tool-input, or last-tool-output
   assert disable                 Stop capturing entirely (hooks stay installed)
@@ -1138,10 +1288,12 @@ Supported agents:
   codex           OpenAI Codex CLI
   opencode        OpenCode
   pi              Pi (pi.dev)
+  devin           Devin CLI (cloud sessions use the Assert plugin)
 
 Examples:
   assert init                    # Initialize hooks for all agents
   assert init claude-code        # Initialize hooks for Claude Code only
+  assert init --repo             # Add .claude/.cursor/.devin/.codex hooks to this repo
   assert sessions                # List sessions in current project
   assert blame src/index.ts      # Show which agent wrote each line
   assert show abc123-xyz         # View a specific session
@@ -1258,7 +1410,19 @@ async function main(): Promise<void> {
       cmdPublic();
       break;
     case 'sync':
-      cmdSync();
+      await cmdSync();
+      break;
+    case 'push':
+      await cmdPush();
+      break;
+    case 'login':
+      cmdLogin(args.slice(1));
+      break;
+    case 'logout':
+      cmdLogout();
+      break;
+    case 'config':
+      cmdConfig(args.slice(1));
       break;
     case 'cleanup': {
       const rest = args.slice(1);
@@ -1285,7 +1449,9 @@ async function main(): Promise<void> {
       if (!addRedactionDirective(process.cwd(), target as RedactionTarget)) {
         error('No active Assert session found for this workspace');
         process.exitCode = 1;
+        break;
       }
+      await flushOutbox({ budgetMs: 10000 });
       break;
     }
     case 'disable':

@@ -26,6 +26,18 @@ describe('toolAction', () => {
       kind: 'read',
       paths: ['/repo/src/a.ts'],
     });
+    expect(toolAction('devin', 'read', { file_path: '/repo/src/a.ts' })).toEqual({
+      kind: 'read',
+      paths: ['/repo/src/a.ts'],
+    });
+  });
+
+  it("maps Devin's shell tool, which carries a workdir, onto a plain command", () => {
+    expect(toolAction('devin', 'exec', { command: 'pnpm test', workdir: '/repo' })).toEqual({
+      kind: 'command',
+      command: 'pnpm test',
+    });
+    expect(toolAction('devin', 'mcp__github__create_issue', { title: 'x' })).toEqual({ kind: 'other' });
   });
 
   it('maps every agent\'s file write onto the same action', () => {

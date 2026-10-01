@@ -1,0 +1,15 @@
+{
+  "name": "assert",
+  "description": "Capture AI coding sessions for code attribution and review",
+  "owner": {
+    "name": "Assert Labs",
+    "url": "https://assert.dev"
+  },
+  "plugins": [
+    {
+      "name": "assert",
+      "source": "./plugin",
+      "description": "Capture AI coding sessions for code attribution and review"
+    }
+  ]
+}

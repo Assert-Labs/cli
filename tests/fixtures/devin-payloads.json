@@ -1,0 +1,35 @@
+[
+  {
+    "hookType": "PreToolUse",
+    "payload": {
+      "hook_event_name": "PreToolUse",
+      "tool_name": "exec",
+      "tool_input": {
+        "command": "echo probe >> README.md; git checkout -- README.md",
+        "workdir": "/home/ubuntu/repos/hook-probe"
+      },
+      "tool_use_id": "toolu_011trpHnAeW7eCRDMonz5q76",
+      "session_id": "devin-f9ad0e3de56e41209f6a40a4235b6cfc",
+      "prompt_id": "07208447-f1ea-4e68-938d-db244e287033"
+    }
+  },
+  {
+    "hookType": "PostToolUse",
+    "payload": {
+      "hook_event_name": "PostToolUse",
+      "tool_name": "exec",
+      "tool_input": {
+        "command": "echo probe >> README.md; git checkout -- README.md",
+        "workdir": "/home/ubuntu/repos/hook-probe"
+      },
+      "tool_use_id": "toolu_011trpHnAeW7eCRDMonz5q76",
+      "tool_response": {
+        "success": true,
+        "output": "Output from command in shell e31f31:\n\n\nExit code: 0",
+        "error": null
+      },
+      "session_id": "devin-f9ad0e3de56e41209f6a40a4235b6cfc",
+      "prompt_id": "07208447-f1ea-4e68-938d-db244e287033"
+    }
+  }
+]

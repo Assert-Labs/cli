@@ -36,7 +36,8 @@
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "pnpm build",
+    "build:plugin": "pnpm build && tsx scripts/build-plugin.ts"
   },
   "files": [
     "dist/cli.js",

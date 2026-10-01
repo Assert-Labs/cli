@@ -26,7 +26,17 @@ import {
   type SessionWriter,
 } from '../session-writer';
 import { findGitRoot, getGitState, getChangedFiles, fileAtRef } from '../git-watcher';
-import { getOrCreateRepoId, getRepoId } from '../repo-identity';
+import { getOrCreateRepoId, getRepoId, getRemoteIdentity } from '../repo-identity';
+import { loadConfig } from '../config';
+import {
+  enqueue as enqueueOutbox,
+  drain as drainOutbox,
+  listEntries as listOutboxEntries,
+  type OutboxEntry,
+  type DrainResult,
+} from '../outbox';
+import { createUploader, type Uploader, type UploadRepo, type UploadSession } from '../uploader';
+import { VERSION } from '../version';
 import {
   loadIndex,
   saveIndex,
@@ -256,10 +266,11 @@ export function addRedactionDirective(
   workspaceRoot: string,
   target: RedactionTarget,
 ): boolean {
-  const sessionId = ['claude-code', 'cursor', 'codex']
-    .map((source) => findSessionIdForWorkspace(workspaceRoot, source))
-    .find((id): id is string => !!id);
-  if (!sessionId) return false;
+  const found = ['claude-code', 'cursor', 'codex', 'opencode', 'pi', 'devin']
+    .map((source) => ({ source, sessionId: findSessionIdForWorkspace(workspaceRoot, source) }))
+    .find((hit): hit is { source: string; sessionId: string } => !!hit.sessionId);
+  if (!found) return false;
+  const { sessionId } = found;
   const centralPath = path.join(getSessionsDir(), `${sessionId}.jsonl`);
   const events = fs
     .readFileSync(centralPath, 'utf-8')
@@ -304,6 +315,23 @@ export function addRedactionDirective(
   const directives = loadRedactions(sessionId);
   directives.push(directive);
   fs.writeFileSync(redactionPath(sessionId), `${JSON.stringify(directives)}\n`);
+
+  // Files already uploaded were sanitized before this directive existed, so
+  // the server has to apply it too.
+  const state = loadStoredState(sessionId, found.source);
+  if (state && !capturePrivate()) {
+    const dirName = sessionDirName(state.sessionId, state.createdAt);
+    for (const repo of Object.values(state.repos)) {
+      if (loadConfig(repo.gitRoot).publish !== 'assert') continue;
+      enqueueOutbox({
+        kind: 'redaction',
+        repo: uploadRepo(repo),
+        gitRoot: repo.gitRoot,
+        session: uploadSession(state, dirName),
+        directive,
+      });
+    }
+  }
   return true;
 }
 
@@ -1231,11 +1259,14 @@ function syncRepo(
   // turn may gain later assistant blocks, so append only its missing events in
   // continuation files; existing files are never rewritten.
   const dirName = sessionDirName(state.sessionId, state.createdAt);
-  const writeInto = (base: string) => {
+  // Returns the files it created, so the caller can publish exactly those.
+  const writeInto = (base: string): string[] => {
+    const written: string[] = [];
     const sdir = path.join(base, dirName);
     fs.mkdirSync(sdir, { recursive: true });
     const metaPath = path.join(sdir, 'meta.json');
     if (!fs.existsSync(metaPath)) {
+      written.push(metaPath);
       const meta = {
         sessionId: state.sessionId,
         source: state.source,
@@ -1253,6 +1284,7 @@ function syncRepo(
       );
       if (!fs.existsSync(lifecyclePath)) {
         fs.writeFileSync(lifecyclePath, `${serializeSessionEvent(event)}\n`);
+        written.push(lifecyclePath);
       }
     }
     const existingEventKeys = new Set<string>();
@@ -1272,24 +1304,95 @@ function syncRepo(
         (line) => !existingEventKeys.has(immutableEventKey(line)),
       );
       if (missingLines.length === 0) return;
-      fs.writeFileSync(
-        path.join(
-          sdir,
-          `${String(nextFileIndex++).padStart(4, '0')}-${t.turnId}.jsonl`,
-        ),
-        `${missingLines.join('\n')}\n`,
+      const turnPath = path.join(
+        sdir,
+        `${String(nextFileIndex++).padStart(4, '0')}-${t.turnId}.jsonl`,
       );
+      fs.writeFileSync(turnPath, `${missingLines.join('\n')}\n`);
+      written.push(turnPath);
       for (const line of missingLines) {
         existingEventKeys.add(immutableEventKey(line));
       }
     });
+    return written;
   };
 
-  writeInto(path.join(getSessionsDir(), repo.repoId));
-  if (!capturePrivate()) {
+  const written = writeInto(path.join(getSessionsDir(), repo.repoId));
+  if (capturePrivate()) return;
+  const mode = loadConfig(repo.gitRoot).publish;
+  if (mode === 'repo') {
     const publicBase = path.join(repo.gitRoot, '.sessions');
     ensureSessionsReadme(publicBase);
     writeInto(publicBase);
+  } else if (mode === 'assert') {
+    enqueueSessionFiles(state, repo, dirName, written);
+  }
+}
+
+// ------------------------------------------------------------------
+// Publishing to Assert (the `assert` publish mode)
+// ------------------------------------------------------------------
+
+function uploadRepo(repo: TouchedRepo): UploadRepo {
+  return { id: repo.repoId, remote: getRemoteIdentity(repo.gitRoot) };
+}
+
+function uploadSession(state: SessionState, dirName: string): UploadSession {
+  return { id: state.sessionId, source: state.source, dir: dirName, createdAt: state.createdAt };
+}
+
+/** Queue freshly written mirror files for upload. */
+function enqueueSessionFiles(
+  state: SessionState,
+  repo: TouchedRepo,
+  dirName: string,
+  files: string[],
+): void {
+  if (files.length === 0) return;
+  const repoInfo = uploadRepo(repo);
+  const session = uploadSession(state, dirName);
+  for (const file of files) {
+    enqueueOutbox({
+      kind: 'session-file',
+      repo: repoInfo,
+      gitRoot: repo.gitRoot,
+      session,
+      file: path.basename(file),
+      path: file,
+    });
+  }
+}
+
+/** Pending uploads, for `assert status`. */
+export function pendingUploads(): { count: number; lastError?: string } {
+  const entries = listOutboxEntries();
+  const failed = entries.filter((e) => e.lastError);
+  return { count: entries.length, lastError: failed[failed.length - 1]?.lastError };
+}
+
+/**
+ * Upload what the outbox holds, within a time budget. Called at turn
+ * boundaries by the hook entrypoint and in full by `assert push`; never
+ * throws. Uploads are keyed by repo (see uploader), so no token is required.
+ */
+export async function flushOutbox(
+  options: { budgetMs?: number; force?: boolean } = {},
+): Promise<DrainResult> {
+  const uploaders = new Map<string, Uploader | null>();
+  const uploaderFor = (entry: OutboxEntry): Uploader | null => {
+    const config = loadConfig(entry.gitRoot);
+    const key = `${config.apiUrl}\n${config.token ?? ''}`;
+    let uploader = uploaders.get(key);
+    if (uploader === undefined) {
+      uploader = createUploader({ apiUrl: config.apiUrl, token: config.token, version: VERSION });
+      uploaders.set(key, uploader);
+    }
+    return uploader;
+  };
+  try {
+    return await drainOutbox({ uploaderFor, budgetMs: options.budgetMs, force: options.force });
+  } catch (e) {
+    return { uploaded: 0, failed: 0, dropped: 0, remaining: listOutboxEntries().length, lastError: (e as Error).message };
   }
 }
 
@@ -1350,18 +1453,20 @@ export function endSession(
 function publishLifecycleEnd(state: SessionState, event: SessionEndEvent): void {
   const dirName = sessionDirName(state.sessionId, state.createdAt);
   const stamp = event.timestamp.replace(/\D/g, '');
-  const bases: string[] = [];
-  for (const repo of Object.values(state.repos)) {
-    bases.push(path.join(getSessionsDir(), repo.repoId));
-    if (!capturePrivate()) bases.push(path.join(repo.gitRoot, '.sessions'));
-  }
-  for (const base of bases) {
+  const writeEnd = (base: string): string | null => {
     const sdir = path.join(base, dirName);
-    if (!fs.existsSync(sdir)) continue;
+    if (!fs.existsSync(sdir)) return null;
     const lifecyclePath = path.join(sdir, `zzzz-${stamp}-session_end.jsonl`);
-    if (!fs.existsSync(lifecyclePath)) {
-      fs.writeFileSync(lifecyclePath, `${serializeSessionEvent(event)}\n`);
-    }
+    if (fs.existsSync(lifecyclePath)) return null;
+    fs.writeFileSync(lifecyclePath, `${serializeSessionEvent(event)}\n`);
+    return lifecyclePath;
+  };
+  for (const repo of Object.values(state.repos)) {
+    const written = writeEnd(path.join(getSessionsDir(), repo.repoId));
+    if (capturePrivate()) continue;
+    const mode = loadConfig(repo.gitRoot).publish;
+    if (mode === 'repo') writeEnd(path.join(repo.gitRoot, '.sessions'));
+    else if (mode === 'assert' && written) enqueueSessionFiles(state, repo, dirName, [written]);
   }
 }
 

@@ -1,0 +1,12 @@
+{
+  "name": "assert",
+  "version": "0.1.22",
+  "description": "Capture AI coding sessions for code attribution and review",
+  "author": {
+    "name": "Assert Labs"
+  },
+  "homepage": "https://assert.dev",
+  "repository": "https://github.com/Assert-Labs/cli",
+  "license": "MIT",
+  "hooks": "./hooks/codex.json"
+}

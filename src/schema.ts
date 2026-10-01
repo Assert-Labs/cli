@@ -225,7 +225,7 @@ export type SessionEvent =
 
 // === Supporting Types ===
 
-export type SessionSource = 'cursor' | 'claude-code' | 'codex' | 'opencode' | 'pi' | 'unknown';
+export type SessionSource = 'cursor' | 'claude-code' | 'codex' | 'opencode' | 'pi' | 'devin' | 'unknown';
 
 export interface LineRange {
   startLine: number; // 1-indexed

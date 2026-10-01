@@ -17,11 +17,10 @@
     <a href="https://docs.assert.dev">Documentation</a>
   </p>
   <p align="center">
-    <a href="https://www.npmjs.com/package/@assertlabs/cli"><img src="https://img.shields.io/npm/v/@assertlabs/cli.svg?v=1" alt="npm version"></a>
-    <a href="https://github.com/Assert-Labs/cli/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@assertlabs/cli.svg?v=1" alt="license"></a>
+    <a href="https://www.npmjs.com/package/@assertlabs/cli"><img src="https://img.shields.io/npm/v/%40assertlabs%2Fcli" alt="npm version"></a>
+    <a href="https://github.com/Assert-Labs/cli/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/%40assertlabs%2Fcli" alt="license"></a>
     <a href="https://github.com/Assert-Labs/cli/actions/workflows/ci.yml"><img src="https://github.com/Assert-Labs/cli/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
     <a href="https://github.com/Assert-Labs/cli/actions/workflows/release.yml"><img src="https://github.com/Assert-Labs/cli/actions/workflows/release.yml/badge.svg" alt="release"></a>
-    <a href="https://discord.gg/YqKKrBmam"><img src="https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white" alt="discord"></a>
   </p>
 </p>
 
@@ -34,11 +33,13 @@ Capture AI agent sessions from any agentic coding tool as part of your repositor
 1. **Global hooks** are initialized in each agent's config directory.
 2. As the agent works, every event (prompts, tool calls, responses) is captured
    to a central store outside your repo.
-3. At each turn boundary, that turn's events are written into `.sessions/` as a
-   new JSONL file — one per turn, inside a per-session directory. Files already
-   written are never rewritten, so capture only ever adds to your working tree.
+3. At each turn boundary, that turn's events are written to a local mirror as a
+   new JSONL file — one per turn, inside a per-session directory — and uploaded
+   to Assert, where they show up on the pull request. Files already written are
+   never rewritten. Nothing is added to your working tree unless you opt into
+   the `repo` publish mode (see [Controlling Capture](#controlling-capture)).
 4. A repo gets nothing until the agent changes a file in it, and a session
-   spanning several repos is written into each one it touched.
+   spanning several repos is recorded against each one it touched.
 
 ## Installation
 
@@ -83,12 +84,68 @@ assert init
 Restart your agent (or reload its plugins) after `assert init` so it picks up
 the newly installed hooks.
 
+Teams can also distribute the Cursor plugin from the Cursor dashboard: **Plugins &
+MCPs → Team Marketplaces → Add Marketplace → Import from Repo** with this
+repository's URL. That installs it in teammates' IDEs; cloud agents are covered
+under [Cloud agents](#cloud-agents).
+
 **Install order doesn't matter.** `assert init` pre-installs the hook for every
 supported agent — including ones you haven't installed yet — into that agent's
 standard plugin directory. An agent you install _later_ auto-discovers the hook
 on its first run, no re-init required. You can still re-run `assert init` any
 time to refresh hooks (e.g. after upgrading assert, or to pick up an agent's
 version-specific features), or `assert init <agent>` to (re)install just one.
+
+### Cloud agents
+
+Hosted agents can't run `assert init`. Each host is set up once, as follows.
+
+**Claude Code** — at [claude.ai/admin-settings/claude-code](https://claude.ai/admin-settings/claude-code),
+paste into **Managed settings**. Every cloud and local session in the org then captures.
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_SYNC_PLUGIN_INSTALL": "1"
+  },
+  "extraKnownMarketplaces": {
+    "assert": {
+      "source": { "source": "github", "repo": "Assert-Labs/cli" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "assert@assert": true
+  }
+}
+```
+
+**Cursor** — cloud agents run hooks only from the repository, never from a
+plugin, so this is required for each repo cloud agents work on:
+
+```bash
+assert init --repo    # then commit the files it writes
+```
+
+**Devin** — install the plugin for the org. Every session then captures.
+
+```bash
+devin plugins install Assert-Labs/cli#plugin
+```
+
+Or declare it in the org manifest:
+
+```json
+{
+  "requiredPlugins": [
+    {
+      "source": "git-subdir",
+      "url": "https://github.com/Assert-Labs/cli.git",
+      "path": "plugin"
+    }
+  ]
+}
+```
 
 ### Requirements
 
@@ -141,35 +198,55 @@ before it existed).
 <table>
   <tr>
     <th colspan="2" align="left">Agent</th>
-    <th align="left">Plugin Location</th>
+    <th align="center">Local</th>
+    <th align="center">Cloud</th>
+    <th align="left">Local Plugin</th>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://claude.com/claude-code"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/claude-code.svg" alt="Claude Code" width="28" align="bottom" /></a></td>
     <td>Claude Code</td>
+    <td align="center">✓</td>
+    <td align="center">✓</td>
     <td><code>~/.claude/skills/assert/</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://openai.com/codex"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" alt="Codex" width="28" align="bottom" /></a></td>
     <td>Codex</td>
+    <td align="center">✓</td>
+    <td align="center">✗</td>
     <td><code>~/.codex/config.toml</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://cursor.com"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor.svg" alt="Cursor" width="24.56" align="bottom" /></a></td>
     <td>Cursor</td>
+    <td align="center">✓</td>
+    <td align="center">✓</td>
     <td><code>~/.cursor/plugins/local/assert/</code></td>
+  </tr>
+  <tr>
+    <td align="center" width="40"><a href="https://devin.ai"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/devin.svg" alt="Devin" width="28" align="bottom" /></a></td>
+    <td>Devin</td>
+    <td align="center">✓</td>
+    <td align="center">✓</td>
+    <td><code>~/.config/devin/config.json</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://opencode.ai"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode.svg" alt="OpenCode" width="28" align="bottom" /></a></td>
     <td>OpenCode</td>
+    <td align="center">✓</td>
+    <td align="center">N/A</td>
     <td><code>~/.config/opencode/plugins/assert.ts</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://pi.dev"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/pi.svg" alt="Pi" width="28" align="bottom" /></a></td>
     <td>Pi</td>
+    <td align="center">✓</td>
+    <td align="center">N/A</td>
     <td><code>~/.pi/agent/extensions/assert.ts</code></td>
   </tr>
 </table>
 
+- Cloud capture is set up once per org or per repo; see [Cloud agents](#cloud-agents).
 - Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert init` warns when it finds only that version.
 - If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
 
@@ -184,9 +261,14 @@ assert blame <file>         # Show line-by-line agent attribution (like git blam
 assert blame --diff <a>..<b> # Attribute only a diff's added lines (PR review)
 assert trace [ref]          # Export agent-trace attribution for a revision (default HEAD)
 assert status               # Show current status
-assert private              # Keep capturing, but stop writing sessions into this repo
-assert public               # Resume writing sessions into this repo (default)
-assert sync                 # Publish local-only sessions into the repo + rebuild blame index
+assert login --token <t>    # Save the Assert API token (uploads need it)
+assert logout               # Remove the saved token
+assert config               # Show the publish mode and API URL
+assert config set publish repo  # Write sessions into .sessions/ instead of uploading
+assert push                 # Upload sessions still waiting in the outbox
+assert private              # Keep capturing, but stop publishing sessions
+assert public               # Resume publishing sessions (default)
+assert sync                 # Publish pending sessions + rebuild blame index
 assert cleanup              # Mark stale still-open sessions ended (default idle > 24h; --hours <n>)
 assert redact <target>      # Redact current-turn, last-tool-input, or last-tool-output
 assert disable              # Pause capture (hooks stay installed)
@@ -196,8 +278,20 @@ assert help                 # Show help
 
 ## Controlling Capture
 
-Session data is written into a repo's `.sessions/` as the agent works, so it
-shows up in `git status` like any other file — you stage and commit it yourself.
+Every session is captured to a local mirror under `~/.assert/sessions/`. Where
+it goes from there is the **publish mode**:
+
+- `assert` (default): each turn is uploaded to Assert as it completes. Uploads
+  need a token (`assert login --token <token>`, or `ASSERT_TOKEN` in the
+  environment the agent runs in); until one exists, turns wait in a local
+  outbox and `assert push` sends them later. Nothing touches your working tree.
+- `repo`: each turn is written into the repo's `.sessions/` instead, so it
+  shows up in `git status` and you commit it with your code.
+- `none`: keep sessions in the local mirror only.
+
+Set it with `assert config set publish <mode>`, with `ASSERT_PUBLISH`, or per
+repo by committing `.assert/config.json` (`{ "publish": "repo" }`). The API
+URL follows the same rule (`apiUrl`, `ASSERT_API_URL`).
 
 - **Skip files:** add a `.assertignore` to the repo root (gitignore-style
   patterns, e.g. `dist/`, `*.log`). Changes that only touch ignored paths won't
@@ -208,9 +302,10 @@ shows up in `git status` like any other file — you stage and commit it yoursel
 - **Turn off for one session:** set `ASSERT_DISABLE=1` in the environment your
   agent runs in.
 - **Keep sessions local:** `assert private` keeps capturing to the central store
-  but stops writing into this repo's `.sessions/`; `assert public` (the default)
-  resumes. `assert sync` publishes any local-only sessions into the repo and
-  rebuilds the blame index — handy after switching branches or going public.
+  but stops publishing (no uploads, nothing written into the repo);
+  `assert public` (the default) resumes. `assert sync` pushes anything pending
+  for the current publish mode and rebuilds the blame index — handy after
+  switching branches or going public.
 
 ## Agent Trace
 

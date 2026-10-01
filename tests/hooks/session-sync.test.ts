@@ -3,7 +3,8 @@
  * (not just edited files), .assertignore, the toggle, and attribution baseline.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -19,6 +20,9 @@ import {
   publishLocalSessions,
 } from '../../src/hooks/session-recorder';
 import { processHook } from '../../src/hooks/claude-code';
+import { processHook as runHook } from '../../src/hooks/index';
+import { addRedactionDirective, flushOutbox } from '../../src/hooks/session-recorder';
+import { listEntries } from '../../src/outbox';
 import { loadState, setCaptureDisabled, setCapturePrivate } from '../../src/hooks/session-recorder';
 import { getOrCreateRepoId } from '../../src/repo-identity';
 import {
@@ -371,5 +375,143 @@ describe('git-driven session sync', () => {
     expect(bySource.get('const one = 1;')).toMatchObject({ source: 'agent', sessionId: 'b1' });
     expect(bySource.get('const human = 0;')!.source).toBe('human');
     expect(bySource.get('const two = 2;')).toMatchObject({ source: 'agent', sessionId: 'b2' });
+  });
+});
+
+describe('publish modes', () => {
+  let originalHome: string | undefined;
+  let home: string;
+  let repo: string;
+  let server: http.Server;
+  let baseUrl: string;
+  const received: Array<{ url?: string; body: Record<string, unknown> }> = [];
+  let status = 200;
+
+  const git = (args: string) => execSync(`git ${args}`, { cwd: repo, stdio: 'pipe' });
+  const payload = (id: string) => JSON.stringify({ session_id: id, cwd: repo });
+
+  beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      let data = '';
+      req.on('data', (chunk) => (data += chunk));
+      req.on('end', () => {
+        received.push({ url: req.url, body: JSON.parse(data) });
+        res.statusCode = status;
+        res.end('{}');
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  });
+
+  afterAll(() => server.close());
+
+  beforeEach(() => {
+    originalHome = process.env.HOME;
+    home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'assert-publish-home-')));
+    repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'assert-publish-repo-')));
+    process.env.HOME = home;
+    process.env.ASSERT_PUBLISH = 'assert';
+    process.env.ASSERT_API_URL = baseUrl;
+    process.env.ASSERT_TOKEN = 'test-token';
+    received.length = 0;
+    status = 200;
+    git('init');
+    git('config user.email test@test.com');
+    git('config user.name test');
+    git('remote add origin git@github.com:Acme/App.git');
+    fs.writeFileSync(path.join(repo, 'base.ts'), 'const base = 1;\n');
+    git('add .');
+    git('commit -m init');
+  });
+
+  afterEach(() => {
+    process.env.HOME = originalHome;
+    process.env.ASSERT_PUBLISH = 'repo';
+    delete process.env.ASSERT_API_URL;
+    delete process.env.ASSERT_TOKEN;
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  it('uploads each turn at the Stop boundary instead of writing .sessions/', async () => {
+    await runHook('claude-code', 'SessionStart', payload('up1'));
+    fs.writeFileSync(path.join(repo, 'new.ts'), 'export const a = 1;\n');
+    await runHook('claude-code', 'Stop', payload('up1'));
+
+    expect(fs.existsSync(path.join(repo, '.sessions'))).toBe(false);
+    expect(listEntries()).toEqual([]);
+    expect(received).toHaveLength(1);
+    const [{ url, body }] = received;
+    expect(url).toBe('/api/v1/sessions/up1/files');
+    expect(body.repo).toEqual({ id: getOrCreateRepoId(repo)!.repoId, remote: 'github.com/acme/app' });
+    expect(body.session).toMatchObject({ id: 'up1', source: 'claude-code' });
+    const files = body.files as Array<{ name: string; content: string }>;
+    expect(files.map((f) => f.name)).toContain('meta.json');
+    expect(files.some((f) => /^\d{4}-.*\.jsonl$/.test(f.name))).toBe(true);
+    // Content is the sanitized session schema, with the repo-local mirror intact.
+    expect(files.find((f) => f.name === 'meta.json')!.content).toContain('"sessionId": "up1"');
+    const mirror = path.join(home, '.assert', 'sessions', (body.repo as { id: string }).id);
+    expect(fs.existsSync(mirror)).toBe(true);
+  });
+
+  it('uploads without a token, keyed by the repo identity', async () => {
+    delete process.env.ASSERT_TOKEN;
+    await runHook('claude-code', 'SessionStart', payload('up2'));
+    fs.writeFileSync(path.join(repo, 'new.ts'), 'x\n');
+    await runHook('claude-code', 'Stop', payload('up2'));
+
+    expect(listEntries()).toEqual([]);
+    expect(received).toHaveLength(1);
+    expect(received[0].body.repo).toMatchObject({ remote: 'github.com/acme/app' });
+  });
+
+  it('retries after a server failure without losing anything', async () => {
+    status = 500;
+    await runHook('claude-code', 'SessionStart', payload('up3'));
+    fs.writeFileSync(path.join(repo, 'new.ts'), 'x\n');
+    await runHook('claude-code', 'Stop', payload('up3'));
+    const queued = listEntries();
+    expect(queued.length).toBeGreaterThan(0);
+    expect(queued[0].attempts).toBe(1);
+    expect(queued[0].lastError).toContain('500');
+
+    status = 200;
+    const result = await flushOutbox({ force: true });
+    expect(result).toMatchObject({ uploaded: queued.length, remaining: 0 });
+  });
+
+  it('sends a redaction for an uploaded session', async () => {
+    await runHook('claude-code', 'SessionStart', payload('up4'));
+    fs.writeFileSync(path.join(repo, 'new.ts'), 'x\n');
+    await runHook('claude-code', 'Stop', payload('up4'));
+    expect(addRedactionDirective(repo, 'current-turn')).toBe(true);
+    await flushOutbox({ force: true });
+    const redaction = received.find((r) => r.url === '/api/v1/sessions/up4/redactions');
+    expect(redaction?.body.directive).toMatchObject({ target: 'current-turn' });
+  });
+
+  it('`none` keeps sessions in the local mirror only', async () => {
+    process.env.ASSERT_PUBLISH = 'none';
+    await runHook('claude-code', 'SessionStart', payload('up5'));
+    fs.writeFileSync(path.join(repo, 'new.ts'), 'x\n');
+    await runHook('claude-code', 'Stop', payload('up5'));
+    expect(fs.existsSync(path.join(repo, '.sessions'))).toBe(false);
+    expect(listEntries()).toEqual([]);
+    expect(received).toEqual([]);
+    expect(fs.existsSync(path.join(home, '.assert', 'sessions'))).toBe(true);
+  });
+
+  it('`assert private` stops uploads too', async () => {
+    setCapturePrivate(true);
+    try {
+      await runHook('claude-code', 'SessionStart', payload('up6'));
+      fs.writeFileSync(path.join(repo, 'new.ts'), 'x\n');
+      await runHook('claude-code', 'Stop', payload('up6'));
+      expect(listEntries()).toEqual([]);
+      expect(received).toEqual([]);
+    } finally {
+      setCapturePrivate(false);
+    }
   });
 });
