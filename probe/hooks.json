@@ -1,0 +1,90 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin SessionStart; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin SessionStart; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin UserPromptSubmit; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin UserPromptSubmit; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin PreToolUse; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin PreToolUse; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin PostToolUse; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin PostToolUse; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "PermissionRequest": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin PermissionRequest; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin PermissionRequest; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin Stop; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin Stop; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "PostCompaction": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin PostCompaction; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin PostCompaction; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "sh -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$DEVIN_PLUGIN_ROOT\"; do [ -n \"$r\" ] && [ -x \"$r/log.sh\" ] && exec \"$r/log.sh\" devin SessionEnd; done; d=$(ls -d /opt/.devin/plugins/cache/*hook-probe*/*/ 2>/dev/null | head -1); [ -n \"$d\" ] && exec \"$d/log.sh\" devin SessionEnd; echo \"[hook-probe] plugin root not found\" >&2'",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}

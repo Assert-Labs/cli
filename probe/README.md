@@ -15,3 +15,7 @@ host can install it by `owner/repo`. Manifests for each host sit side by side:
 - `in-repo/` — the same hooks as repo-committed files, for comparing plugin
   hooks against in-repo hooks. Copy `log.sh` to `<repo>/.hook-probe/log.sh`
   and the dotfiles to the repo root.
+
+`hooks.json` at the root is Devin's native hooks file (same shape as
+`.devin/hooks.v1.json`). Its commands locate `log.sh` through whichever
+plugin-root variable the host sets, falling back to Devin's plugin cache path.
