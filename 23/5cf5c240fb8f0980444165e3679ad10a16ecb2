@@ -1,0 +1,14 @@
+assets/agents/devin.svg
+  h_a0e615773b4470 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "235cf5c240fb8f0980444165e3679ad10a16ecb2",
+  "prompts": {},
+  "humans": {
+    "h_a0e615773b4470": {
+      "author": "Devin Plumb <devinwplumb@gmail.com>"
+    }
+  }
+}
