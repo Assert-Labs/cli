@@ -93,34 +93,38 @@ version-specific features), or `assert init <agent>` to (re)install just one.
 
 ### Cloud agents
 
-Hosted agents don't run `assert init`; they pick capture up either from an
-org-level plugin or from hook files committed to the repo. Both routes were
-verified in real cloud sessions.
+Hosted agents can't run `assert init`. Set capture up once per org (Claude
+Code, Devin) or once per repo (Cursor), and give the agent an `ASSERT_TOKEN`.
 
-**Org-level plugin** (no repo changes). The plugin is built from this repo
-(`pnpm build:plugin`) and published at [`Assert-Labs/plugin`](https://github.com/Assert-Labs/plugin):
+**Claude Code** — at [claude.ai/admin-settings/claude-code](https://claude.ai/admin-settings/claude-code),
+paste into **Managed settings**:
 
-- **Claude Code** — an organization Owner pastes the block from the plugin's
-  README into Organization settings → Claude Code → Managed settings. It
-  registers the marketplace, enables the plugin, and sets
-  `CLAUDE_CODE_SYNC_PLUGIN_INSTALL=1` so cloud sessions wait for the install.
-- **Devin** — `devin plugins install Assert-Labs/plugin`, or list it under
-  `requiredPlugins` in the org manifest with `ASSERT_TOKEN` in its `env`.
-
-**Repo hooks** (one commit, any host that reads hooks from the repository):
-
-```bash
-assert init --repo    # writes .claude/settings.json, .cursor/hooks.json,
-                      # .devin/hooks.v1.json, .codex/hooks.json and .assert/hook.sh
+```json
+{
+  "env": { "CLAUDE_CODE_SYNC_PLUGIN_INSTALL": "1", "ASSERT_TOKEN": "<your token>" },
+  "extraKnownMarketplaces": {
+    "assert": { "source": { "source": "github", "repo": "Assert-Labs/plugin" }, "autoUpdate": true }
+  },
+  "enabledPlugins": { "assert@assert": true }
+}
 ```
 
-Each hook runs `.assert/hook.sh`, which installs the CLI into `~/.assert` on
-first use. This is the route for Cursor cloud agents and for Claude Code teams
-without managed settings. Codex cloud tasks don't run hooks today.
+**Devin** — add `ASSERT_TOKEN` as an org secret, then install the plugin from
+the org manifest:
 
-Either way, uploads need a token where the agent runs: `ASSERT_TOKEN` in the
-host's environment or secrets, or a repo token committed in
-`.assert/config.json`.
+```json
+{ "requiredPlugins": [{ "source": "github", "repo": "Assert-Labs/plugin",
+  "env": { "ASSERT_TOKEN": "secret:org:ASSERT_TOKEN" } }] }
+```
+
+**Cursor** — cloud agents read hooks from the repo. In the repo, run and commit:
+
+```bash
+assert init --repo
+```
+
+Then add `ASSERT_TOKEN` under **Cloud Agents → Secrets** in the Cursor dashboard.
+The same commit also covers Claude Code and Devin sessions on that repo.
 
 ### Requirements
 
