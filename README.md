@@ -84,6 +84,11 @@ assert init
 Restart your agent (or reload its plugins) after `assert init` so it picks up
 the newly installed hooks.
 
+Teams can also distribute the Cursor plugin from the Cursor dashboard: **Plugins &
+MCPs → Team Marketplaces → Add Marketplace → Import from Repo** with this
+repository's URL. That installs it in teammates' IDEs; cloud agents are covered
+under [Cloud agents](#cloud-agents).
+
 **Install order doesn't matter.** `assert init` pre-installs the hook for every
 supported agent — including ones you haven't installed yet — into that agent's
 standard plugin directory. An agent you install _later_ auto-discovers the hook
@@ -93,11 +98,10 @@ version-specific features), or `assert init <agent>` to (re)install just one.
 
 ### Cloud agents
 
-Hosted agents can't run `assert init`. Point each host at this repository once
-and every session on every repo is captured.
+Hosted agents can't run `assert init`. Each host is set up once, as follows.
 
-**Claude Code** — [claude.ai/admin-settings/claude-code](https://claude.ai/admin-settings/claude-code)
-→ **Managed settings**:
+**Claude Code** — at [claude.ai/admin-settings/claude-code](https://claude.ai/admin-settings/claude-code),
+paste into **Managed settings**. Every cloud and local session in the org then captures.
 
 ```json
 {
@@ -116,7 +120,20 @@ and every session on every repo is captured.
 }
 ```
 
-**Devin** — `devin plugins install Assert-Labs/cli#plugin`, or in the org manifest:
+**Cursor** — cloud agents run hooks only from the repository, never from a
+plugin, so this is required for each repo cloud agents work on:
+
+```bash
+assert init --repo    # then commit the files it writes
+```
+
+**Devin** — install the plugin for the org. Every session then captures.
+
+```bash
+devin plugins install Assert-Labs/cli#plugin
+```
+
+Or declare it in the org manifest:
 
 ```json
 {
@@ -129,14 +146,6 @@ and every session on every repo is captured.
   ]
 }
 ```
-
-**Cursor** — Dashboard → **Plugins & MCPs** → **Team Marketplaces** →
-**Add Marketplace** → **Import from Repo** → `https://github.com/Assert-Labs/cli`,
-then set **assert** to **Required**. Cloud agents only run hooks committed to
-the repo, so for those also run `assert init --repo` once per repo.
-
-**Codex** (local) — Admin → **Plugins** → **Add** → **Import marketplace** →
-`https://github.com/Assert-Labs/cli`.
 
 ### Requirements
 
