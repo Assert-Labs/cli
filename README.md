@@ -140,34 +140,59 @@ before it existed).
 <table>
   <tr>
     <th colspan="2" align="left">Agent</th>
+    <th align="center">Local</th>
+    <th align="center">Cloud</th>
     <th align="left">Plugin Location</th>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://claude.com/claude-code"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/claude-code.svg" alt="Claude Code" width="28" align="bottom" /></a></td>
     <td>Claude Code</td>
-    <td><code>~/.claude/skills/assert/</code></td>
+    <td align="center">✓</td>
+    <td align="center">✓</td>
+    <td><code>~/.claude/skills/assert/</code> · org plugin or <code>.claude/settings.json</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://openai.com/codex"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/codex.svg" alt="Codex" width="28" align="bottom" /></a></td>
     <td>Codex</td>
+    <td align="center">✓</td>
+    <td align="center">✗</td>
     <td><code>~/.codex/config.toml</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://cursor.com"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/cursor.svg" alt="Cursor" width="24.56" align="bottom" /></a></td>
     <td>Cursor</td>
-    <td><code>~/.cursor/plugins/local/assert/</code></td>
+    <td align="center">✓</td>
+    <td align="center">✓</td>
+    <td><code>~/.cursor/plugins/local/assert/</code> · <code>.cursor/hooks.json</code></td>
+  </tr>
+  <tr>
+    <td align="center" width="40"></td>
+    <td>Devin</td>
+    <td align="center">✓</td>
+    <td align="center">✓</td>
+    <td>org plugin · <code>.devin/hooks.v1.json</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://opencode.ai"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode.svg" alt="OpenCode" width="28" align="bottom" /></a></td>
     <td>OpenCode</td>
+    <td align="center">✓</td>
+    <td align="center">N/A</td>
     <td><code>~/.config/opencode/plugins/assert.ts</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://pi.dev"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/pi.svg" alt="Pi" width="28" align="bottom" /></a></td>
     <td>Pi</td>
+    <td align="center">✓</td>
+    <td align="center">N/A</td>
     <td><code>~/.pi/agent/extensions/assert.ts</code></td>
   </tr>
 </table>
+
+**Local** is the agent running on your machine, installed by `assert init`.
+**Cloud** is the agent's hosted product (Claude Code on the web, Cursor cloud
+agents, Devin), where capture is enabled org-wide through the Assert plugin or
+by committing the listed hook file to the repo. ✗ marks a hosted product that
+does not run hooks yet (Codex cloud); N/A marks agents with no hosted product.
 
 - Codex support requires the **modern Codex CLI** (the Rust build with hooks); the legacy `@openai/codex` (`0.1.x`) has no hook support, and `assert init` warns when it finds only that version.
 - If you would like support to be added for a particular agent, take a look at [CONTRIBUTING.md](CONTRIBUTING.md) and look to see if that agent will be added soon in open [issues](https://github.com/Assert-Labs/cli/issues) and [pull requests](https://github.com/Assert-Labs/cli/pulls).
