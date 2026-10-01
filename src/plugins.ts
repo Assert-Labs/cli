@@ -43,6 +43,54 @@ export function piExtensionPath(home: string): string {
   return path.join(piExtensionDir(home), 'assert.ts');
 }
 
+// The Devin CLI reads user-level hooks from ~/.config/devin/config.json
+// (under a `hooks` key); cloud sessions get them from the org plugin instead.
+export function devinConfigPath(home: string): string {
+  return path.join(home, '.config', 'devin', 'config.json');
+}
+
+// Devin's hook events (Claude Code's names plus Devin's own two).
+export const DEVIN_HOOK_EVENTS = [
+  'SessionStart',
+  'SessionEnd',
+  'UserPromptSubmit',
+  'PreToolUse',
+  'PostToolUse',
+  'Stop',
+] as const;
+
+/**
+ * Merge assert's hooks into Devin's user config, idempotently: prior assert
+ * hooks are replaced, foreign hooks and every other key are kept. `existing`
+ * is the current file text, or null when there is none.
+ */
+export function upsertDevinConfigHooks(existing: string | null, assertBin: string): string {
+  let config: Record<string, unknown> = {};
+  try {
+    const parsed = existing && existing.trim() ? JSON.parse(existing) : {};
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) config = parsed;
+  } catch {
+    /* unreadable config: start from our hooks only, nothing else to keep */
+  }
+  type Hook = { type?: string; command?: string; [k: string]: unknown };
+  type Group = { matcher?: string; hooks?: Hook[]; [k: string]: unknown };
+  const isOurs = (hook: Hook) =>
+    typeof hook.command === 'string' && hook.command.startsWith(`${assertBin} hook devin `);
+  const hooks = ((config.hooks as Record<string, Group[]>) ?? {}) as Record<string, Group[]>;
+  for (const event of DEVIN_HOOK_EVENTS) {
+    const groups = Array.isArray(hooks[event]) ? hooks[event] : [];
+    const kept = groups
+      .map((g) => ({ ...g, hooks: (g.hooks ?? []).filter((h) => !isOurs(h)) }))
+      .filter((g) => g.hooks.length > 0);
+    kept.push({
+      hooks: [{ type: 'command', command: `${assertBin} hook devin ${event}`, timeout: 30 }],
+    });
+    hooks[event] = kept;
+  }
+  config.hooks = hooks;
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
 /** Installed Claude Code version (e.g. "2.1.183"), or null if `claude` is absent. */
 export function detectClaudeCodeVersion(): string | null {
   try {

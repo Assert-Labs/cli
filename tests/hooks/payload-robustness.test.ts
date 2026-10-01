@@ -54,6 +54,16 @@ const HOOKS: Record<AgentType, string[]> = {
     'Stop',
     'SessionEnd',
   ],
+  devin: [
+    'SessionStart',
+    'SessionEnd',
+    'UserPromptSubmit',
+    'PreToolUse',
+    'PostToolUse',
+    'Stop',
+    'PermissionRequest',
+    'PostCompaction',
+  ],
 };
 
 /** Payload shapes an agent might plausibly hand us, none of them valid. */

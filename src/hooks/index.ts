@@ -9,9 +9,10 @@ import * as cursor from './cursor';
 import * as codex from './codex';
 import * as opencode from './opencode';
 import * as pi from './pi';
+import * as devin from './devin';
 import { flushOutbox } from './session-recorder';
 
-export type AgentType = 'claude-code' | 'cursor' | 'codex' | 'opencode' | 'pi';
+export type AgentType = 'claude-code' | 'cursor' | 'codex' | 'opencode' | 'pi' | 'devin';
 
 /**
  * Process a hook invocation
@@ -36,6 +37,9 @@ export async function processHook(
       break;
     case 'pi':
       await pi.processHook(hookType, input);
+      break;
+    case 'devin':
+      await devin.processHook(hookType, input);
       break;
     default:
       console.error(`[assert] Unknown agent type: ${agent}`);

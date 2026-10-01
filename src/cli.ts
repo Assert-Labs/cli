@@ -41,6 +41,8 @@ import {
   openCodePluginPath,
   piExtensionDir,
   piExtensionPath,
+  devinConfigPath,
+  upsertDevinConfigHooks,
   detectClaudeCodeVersion,
   generateClaudeCodePlugin,
   generateCursorPlugin,
@@ -135,6 +137,11 @@ function detectInstalledAgents(): string[] {
     detected.push('pi');
   }
 
+  // Devin CLI: check for its config directory (~/.config/devin)
+  if (fs.existsSync(path.join(home, '.config', 'devin'))) {
+    detected.push('devin');
+  }
+
   return detected;
 }
 
@@ -219,6 +226,20 @@ function installOpenCodePlugin(home: string): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(openCodePluginPath(home), generateOpenCodePlugin(VERSION, assertBin));
   log('✓ OpenCode');
+}
+
+function installDevinHooks(home: string): void {
+  const assertBin = path.join(home, '.assert', 'bin', 'assert');
+  const configPath = devinConfigPath(home);
+  let config: string | null = null;
+  try {
+    config = fs.readFileSync(configPath, 'utf-8');
+  } catch {
+    /* no config yet */
+  }
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, upsertDevinConfigHooks(config, assertBin));
+  log('✓ Devin');
 }
 
 function installPiPlugin(home: string): void {
@@ -352,7 +373,7 @@ async function cmdInit(agent?: string): Promise<void> {
 
   log(`Linked ${destBin} -> ${linkTarget}`);
 
-  const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
+  const supportedAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi', 'devin'];
 
   // Detection is only for messaging. We pre-place the plugin for EVERY supported
   // agent into its standard plugin directory — even agents not installed yet —
@@ -379,6 +400,8 @@ async function cmdInit(agent?: string): Promise<void> {
       installOpenCodePlugin(home);
     } else if (a === 'pi') {
       installPiPlugin(home);
+    } else if (a === 'devin') {
+      installDevinHooks(home);
     }
   }
 
@@ -394,7 +417,7 @@ async function cmdInit(agent?: string): Promise<void> {
 }
 
 async function cmdHook(agent: string, hookType: string): Promise<void> {
-  const validAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi'];
+  const validAgents = ['claude-code', 'cursor', 'codex', 'opencode', 'pi', 'devin'];
   if (!validAgents.includes(agent)) {
     error(`Unknown agent: ${agent}`);
     process.exit(1);
@@ -1244,6 +1267,7 @@ Supported agents:
   codex           OpenAI Codex CLI
   opencode        OpenCode
   pi              Pi (pi.dev)
+  devin           Devin CLI (cloud sessions use the Assert plugin)
 
 Examples:
   assert init                    # Initialize hooks for all agents

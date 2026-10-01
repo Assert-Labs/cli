@@ -21,6 +21,9 @@ import {
   generateOpenCodePlugin,
   generatePiExtension,
   upsertCodexConfigHooks,
+  upsertDevinConfigHooks,
+  devinConfigPath,
+  DEVIN_HOOK_EVENTS,
 } from '../src/plugins';
 
 describe('plugins', () => {
@@ -237,5 +240,42 @@ describe('plugins', () => {
     // An explicit override is tried first.
     const overridden = codexCliCandidates('/Users/u', { CODEX_CLI_PATH: '/opt/codex' }, 'darwin');
     expect(overridden[0]).toBe('/opt/codex');
+  });
+});
+
+describe('Devin hooks', () => {
+  const bin = '/home/u/.assert/bin/assert';
+
+  it('writes hooks for every event into the Devin CLI user config', () => {
+    expect(devinConfigPath('/home/u')).toBe('/home/u/.config/devin/config.json');
+    const config = JSON.parse(upsertDevinConfigHooks(null, bin));
+    for (const event of DEVIN_HOOK_EVENTS) {
+      expect(config.hooks[event]).toEqual([
+        { hooks: [{ type: 'command', command: `${bin} hook devin ${event}`, timeout: 30 }] },
+      ]);
+    }
+  });
+
+  it('keeps foreign hooks and settings, replaces prior assert hooks, and is idempotent', () => {
+    const existing = JSON.stringify({
+      model: 'x',
+      hooks: {
+        Stop: [{ hooks: [{ type: 'command', command: 'other' }] }],
+        PreToolUse: [{ hooks: [{ type: 'command', command: `${bin} hook devin PreToolUse` }] }],
+      },
+    });
+    const once = upsertDevinConfigHooks(existing, bin);
+    const config = JSON.parse(once);
+    expect(config.model).toBe('x');
+    expect(config.hooks.Stop.map((g: { hooks: { command: string }[] }) => g.hooks[0].command)).toEqual([
+      'other',
+      `${bin} hook devin Stop`,
+    ]);
+    expect(config.hooks.PreToolUse).toHaveLength(1);
+    expect(upsertDevinConfigHooks(once, bin)).toBe(once);
+  });
+
+  it('starts from scratch over an unreadable config', () => {
+    expect(JSON.parse(upsertDevinConfigHooks('{nope', bin)).hooks.SessionStart).toHaveLength(1);
   });
 });

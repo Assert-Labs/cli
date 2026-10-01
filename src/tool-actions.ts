@@ -202,12 +202,33 @@ const PI_TOOLS: ToolActionMap = {
   todo: () => ({ kind: 'todo' }),
 };
 
+// Devin speaks Claude Code's hook protocol and documents a Claude-like tool
+// set (read/write/edit/apply_patch/grep/glob/webfetch/todo_write/run_subagent).
+// Its shell tool is `exec {command, workdir}`, confirmed against a real cloud
+// session (tests/fixtures/devin-payloads.json); the file tools follow Devin's
+// documented names, with `path` kept as an alias until a payload confirms it.
+const DEVIN_TOOLS: ToolActionMap = {
+  read: (i) => ({ kind: 'read', paths: paths(i, 'file_path', 'path') }),
+  write: (i) => ({ kind: 'write', paths: paths(i, 'file_path', 'path') }),
+  edit: (i) => ({ kind: 'edit', paths: paths(i, 'file_path', 'path') }),
+  apply_patch: (i) => applyPatch(i, 'patch', 'input', 'command'),
+  notebook_read: (i) => ({ kind: 'read', paths: paths(i, 'notebook_path', 'file_path') }),
+  notebook_edit: (i) => ({ kind: 'edit', paths: paths(i, 'notebook_path', 'file_path') }),
+  grep: (i) => ({ kind: 'search', query: text(i, 'pattern'), paths: paths(i, 'path') }),
+  glob: (i) => ({ kind: 'search', query: text(i, 'pattern'), paths: paths(i, 'path') }),
+  exec: (i) => ({ kind: 'command', command: text(i, 'command') }),
+  webfetch: (i) => ({ kind: 'web', url: text(i, 'url'), query: text(i, 'prompt') }),
+  run_subagent: (i) => ({ kind: 'task', query: text(i, 'description', 'prompt') }),
+  todo_write: () => ({ kind: 'todo' }),
+};
+
 const TOOLS_BY_SOURCE: Record<string, ToolActionMap> = {
   'claude-code': CLAUDE_CODE_TOOLS,
   codex: CODEX_TOOLS,
   cursor: CURSOR_TOOLS,
   opencode: OPENCODE_TOOLS,
   pi: PI_TOOLS,
+  devin: DEVIN_TOOLS,
 };
 
 const ALL_TOOL_MAPS = Object.values(TOOLS_BY_SOURCE);

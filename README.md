@@ -172,7 +172,7 @@ before it existed).
     <td>Devin</td>
     <td align="center">✓</td>
     <td align="center">✓</td>
-    <td>org plugin · <code>.devin/hooks.v1.json</code></td>
+    <td><code>~/.config/devin/config.json</code> · org plugin or <code>.devin/hooks.v1.json</code></td>
   </tr>
   <tr>
     <td align="center" width="40"><a href="https://opencode.ai"><img src="https://raw.githubusercontent.com/Assert-Labs/cli/main/assets/agents/opencode.svg" alt="OpenCode" width="28" align="bottom" /></a></td>
