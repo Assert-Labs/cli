@@ -1,0 +1,70 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}/.devin/log.sh\" codex-repo SessionStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}/.devin/log.sh\" codex-repo UserPromptSubmit",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}/.devin/log.sh\" codex-repo PreToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}/.devin/log.sh\" codex-repo PostToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}/.devin/log.sh\" codex-repo Stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}/.devin/log.sh\" codex-repo SessionEnd",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
