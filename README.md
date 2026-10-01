@@ -33,11 +33,13 @@ Capture AI agent sessions from any agentic coding tool as part of your repositor
 1. **Global hooks** are initialized in each agent's config directory.
 2. As the agent works, every event (prompts, tool calls, responses) is captured
    to a central store outside your repo.
-3. At each turn boundary, that turn's events are written into `.sessions/` as a
-   new JSONL file — one per turn, inside a per-session directory. Files already
-   written are never rewritten, so capture only ever adds to your working tree.
+3. At each turn boundary, that turn's events are written to a local mirror as a
+   new JSONL file — one per turn, inside a per-session directory — and uploaded
+   to Assert, where they show up on the pull request. Files already written are
+   never rewritten. Nothing is added to your working tree unless you opt into
+   the `repo` publish mode (see [Controlling Capture](#controlling-capture)).
 4. A repo gets nothing until the agent changes a file in it, and a session
-   spanning several repos is written into each one it touched.
+   spanning several repos is recorded against each one it touched.
 
 ## Installation
 
@@ -208,9 +210,14 @@ assert blame <file>         # Show line-by-line agent attribution (like git blam
 assert blame --diff <a>..<b> # Attribute only a diff's added lines (PR review)
 assert trace [ref]          # Export agent-trace attribution for a revision (default HEAD)
 assert status               # Show current status
-assert private              # Keep capturing, but stop writing sessions into this repo
-assert public               # Resume writing sessions into this repo (default)
-assert sync                 # Publish local-only sessions into the repo + rebuild blame index
+assert login --token <t>    # Save the Assert API token (uploads need it)
+assert logout               # Remove the saved token
+assert config               # Show the publish mode and API URL
+assert config set publish repo  # Write sessions into .sessions/ instead of uploading
+assert push                 # Upload sessions still waiting in the outbox
+assert private              # Keep capturing, but stop publishing sessions
+assert public               # Resume publishing sessions (default)
+assert sync                 # Publish pending sessions + rebuild blame index
 assert cleanup              # Mark stale still-open sessions ended (default idle > 24h; --hours <n>)
 assert redact <target>      # Redact current-turn, last-tool-input, or last-tool-output
 assert disable              # Pause capture (hooks stay installed)
@@ -220,8 +227,20 @@ assert help                 # Show help
 
 ## Controlling Capture
 
-Session data is written into a repo's `.sessions/` as the agent works, so it
-shows up in `git status` like any other file — you stage and commit it yourself.
+Every session is captured to a local mirror under `~/.assert/sessions/`. Where
+it goes from there is the **publish mode**:
+
+- `assert` (default): each turn is uploaded to Assert as it completes. Uploads
+  need a token (`assert login --token <token>`, or `ASSERT_TOKEN` in the
+  environment the agent runs in); until one exists, turns wait in a local
+  outbox and `assert push` sends them later. Nothing touches your working tree.
+- `repo`: each turn is written into the repo's `.sessions/` instead, so it
+  shows up in `git status` and you commit it with your code.
+- `none`: keep sessions in the local mirror only.
+
+Set it with `assert config set publish <mode>`, with `ASSERT_PUBLISH`, or per
+repo by committing `.assert/config.json` (`{ "publish": "repo" }`). The API
+URL follows the same rule (`apiUrl`, `ASSERT_API_URL`).
 
 - **Skip files:** add a `.assertignore` to the repo root (gitignore-style
   patterns, e.g. `dist/`, `*.log`). Changes that only touch ignored paths won't
@@ -232,9 +251,10 @@ shows up in `git status` like any other file — you stage and commit it yoursel
 - **Turn off for one session:** set `ASSERT_DISABLE=1` in the environment your
   agent runs in.
 - **Keep sessions local:** `assert private` keeps capturing to the central store
-  but stops writing into this repo's `.sessions/`; `assert public` (the default)
-  resumes. `assert sync` publishes any local-only sessions into the repo and
-  rebuilds the blame index — handy after switching branches or going public.
+  but stops publishing (no uploads, nothing written into the repo);
+  `assert public` (the default) resumes. `assert sync` pushes anything pending
+  for the current publish mode and rebuilds the blame index — handy after
+  switching branches or going public.
 
 ## Agent Trace
 

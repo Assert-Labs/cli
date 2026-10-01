@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { execSync } from 'child_process';
 import { findGitRoot, commonGitDir } from './git-watcher';
 
 const REPO_ID_FILE = 'assert-repo-id';
@@ -85,4 +86,40 @@ export function removeRepoId(gitRoot: string): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Normalize a git remote URL to `host/owner/repo`: no scheme, credentials,
+ * port, or `.git` suffix, so the same repo matches however it was cloned.
+ * Returns null for a URL that doesn't look like a hosted remote.
+ */
+export function normalizeRemote(url: string): string | null {
+  let rest = url.trim();
+  if (!rest) return null;
+  const scp = /^[^@/]+@([^:/]+):(.+)$/.exec(rest); // git@host:owner/repo.git
+  if (scp && !rest.includes('://')) {
+    rest = `${scp[1]}/${scp[2]}`;
+  } else {
+    rest = rest.replace(/^[a-z+]+:\/\//i, ''); // scheme
+    rest = rest.replace(/^[^@/]+@/, ''); // user[:token]@
+    rest = rest.replace(/^([^/:]+):\d+\//, '$1/'); // :port
+  }
+  rest = rest.replace(/\.git$/i, '').replace(/\/+$/, '');
+  const parts = rest.split('/').filter(Boolean);
+  if (parts.length < 2 || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(parts[0])) return null;
+  return parts.join('/').toLowerCase();
+}
+
+/** The repo's `origin` remote as `host/owner/repo`, or null without one. */
+export function getRemoteIdentity(gitRoot: string): string | null {
+  try {
+    const out = execSync('git remote get-url origin', {
+      cwd: gitRoot,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return normalizeRemote(out);
+  } catch {
+    return null;
+  }
 }

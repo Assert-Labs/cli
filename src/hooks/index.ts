@@ -9,6 +9,7 @@ import * as cursor from './cursor';
 import * as codex from './codex';
 import * as opencode from './opencode';
 import * as pi from './pi';
+import { flushOutbox } from './session-recorder';
 
 export type AgentType = 'claude-code' | 'cursor' | 'codex' | 'opencode' | 'pi';
 
@@ -38,5 +39,16 @@ export async function processHook(
       break;
     default:
       console.error(`[assert] Unknown agent type: ${agent}`);
+      return;
+  }
+
+  // Turn boundaries are the only hooks that may touch the network: that is
+  // when new session files appear, and a tool-use hook must never add latency
+  // to the agent. Bounded, and failures stay queued for the next boundary.
+  if (/^(stop|sessionend)$/i.test(hookType)) {
+    const result = await flushOutbox({ budgetMs: 4000 });
+    if (result.lastError) {
+      console.error(`[assert] upload deferred (${result.remaining} pending): ${result.lastError}`);
+    }
   }
 }
