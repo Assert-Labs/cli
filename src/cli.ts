@@ -719,7 +719,8 @@ async function cmdPush(): Promise<void> {
   }
   const result = await flushOutbox({ budgetMs: 10 * 60 * 1000, force: true });
   log(`Uploaded ${result.uploaded} file(s); ${result.remaining} pending.`);
-  if (result.remaining > 0 && result.lastError) warn(`last error: ${result.lastError}`);
+  if (result.dropped > 0) warn(`${result.dropped} file(s) rejected by the server and dropped.`);
+  if ((result.remaining > 0 || result.dropped > 0) && result.lastError) warn(`last error: ${result.lastError}`);
 }
 
 /** Store the API token in ~/.assert/config.json. */

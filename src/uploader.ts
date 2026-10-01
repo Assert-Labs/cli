@@ -47,6 +47,13 @@ export class UploadError extends Error {
     this.name = 'UploadError';
     this.status = status;
   }
+
+  /** The server rejected the request itself, so sending it again cannot
+   * help: a malformed body, a repo Assert is not installed on, or a payload
+   * too large. Timeouts, rate limits and server errors are not permanent. */
+  get permanent(): boolean {
+    return this.status != null && [400, 403, 404, 413, 422].includes(this.status);
+  }
 }
 
 export interface UploaderOptions {
@@ -94,10 +101,10 @@ export function createUploader(options: UploaderOptions): Uploader {
 
   return {
     uploadSession(batch) {
-      return post(`/v1/sessions/${encodeURIComponent(batch.session.id)}/files`, batch);
+      return post(`/api/v1/sessions/${encodeURIComponent(batch.session.id)}/files`, batch);
     },
     uploadRedaction(upload) {
-      return post(`/v1/sessions/${encodeURIComponent(upload.session.id)}/redactions`, upload);
+      return post(`/api/v1/sessions/${encodeURIComponent(upload.session.id)}/redactions`, upload);
     },
   };
 }

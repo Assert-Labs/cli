@@ -8,14 +8,15 @@
  * upload is acknowledged. Draining is bounded by a time budget so a hook never
  * waits on the network for long; whatever is left goes with the next turn
  * boundary or `assert push`. Nothing is ever dropped except entries whose
- * mirror file no longer exists.
+ * mirror file no longer exists and entries the server rejected outright
+ * (see `UploadError.permanent`), which no retry could land.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { RedactionDirective } from './sanitizer';
-import type { SessionUploadBatch, Uploader, UploadRepo, UploadSession } from './uploader';
+import { UploadError, type SessionUploadBatch, type Uploader, type UploadRepo, type UploadSession } from './uploader';
 
 export interface OutboxEntry {
   id: string;
@@ -56,10 +57,14 @@ function writeEntry(entry: OutboxEntry): void {
   fs.renameSync(`${file}.tmp`, file);
 }
 
+// Ids sort oldest first by name; the sequence keeps entries written within
+// the same millisecond in the order they were enqueued.
+let sequence = 0;
+
 export function enqueue(entry: NewOutboxEntry): OutboxEntry {
   const full: OutboxEntry = {
     ...entry,
-    id: `${Date.now()}-${randomUUID().slice(0, 8)}`,
+    id: `${Date.now()}-${String(sequence++).padStart(6, '0')}-${randomUUID().slice(0, 8)}`,
     enqueuedAt: new Date().toISOString(),
     attempts: 0,
   };
@@ -117,6 +122,8 @@ export interface DrainOptions {
 export interface DrainResult {
   uploaded: number;
   failed: number;
+  /** Entries the server rejected outright and that were discarded. */
+  dropped: number;
   /** Entries still queued afterwards (including ones not attempted). */
   remaining: number;
   lastError?: string;
@@ -124,7 +131,8 @@ export interface DrainResult {
 
 /**
  * Upload due entries, one request per session. Succeeded entries are removed;
- * failed ones record the error and a backoff and stay queued.
+ * failed ones record the error and a backoff and stay queued, unless the
+ * server rejected them for good.
  */
 export async function drain(options: DrainOptions): Promise<DrainResult> {
   const now = options.now ?? Date.now;
@@ -139,7 +147,7 @@ export async function drain(options: DrainOptions): Promise<DrainResult> {
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(entry);
   }
 
-  const result: DrainResult = { uploaded: 0, failed: 0, remaining: 0 };
+  const result: DrainResult = { uploaded: 0, failed: 0, dropped: 0, remaining: 0 };
   let started = false;
   for (const entries of groups.values()) {
     // Always attempt at least one request; the budget bounds what follows.
@@ -176,6 +184,11 @@ export async function drain(options: DrainOptions): Promise<DrainResult> {
     } catch (e) {
       const message = (e as Error).message;
       result.lastError = message;
+      if (e instanceof UploadError && e.permanent) {
+        for (const entry of entries) remove(entry);
+        result.dropped += entries.length;
+        continue;
+      }
       for (const entry of entries) {
         if (!fs.existsSync(entryPath(entry.id))) continue;
         entry.attempts += 1;

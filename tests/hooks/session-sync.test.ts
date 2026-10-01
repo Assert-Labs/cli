@@ -443,7 +443,7 @@ describe('publish modes', () => {
     expect(listEntries()).toEqual([]);
     expect(received).toHaveLength(1);
     const [{ url, body }] = received;
-    expect(url).toBe('/v1/sessions/up1/files');
+    expect(url).toBe('/api/v1/sessions/up1/files');
     expect(body.repo).toEqual({ id: getOrCreateRepoId(repo)!.repoId, remote: 'github.com/acme/app' });
     expect(body.session).toMatchObject({ id: 'up1', source: 'claude-code' });
     const files = body.files as Array<{ name: string; content: string }>;
@@ -487,7 +487,7 @@ describe('publish modes', () => {
     await runHook('claude-code', 'Stop', payload('up4'));
     expect(addRedactionDirective(repo, 'current-turn')).toBe(true);
     await flushOutbox({ force: true });
-    const redaction = received.find((r) => r.url === '/v1/sessions/up4/redactions');
+    const redaction = received.find((r) => r.url === '/api/v1/sessions/up4/redactions');
     expect(redaction?.body.directive).toMatchObject({ target: 'current-turn' });
   });
 

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { enqueue, listEntries, drain, backoffMs, outboxDir, type OutboxEntry } from '../src/outbox';
-import type { Uploader, SessionUploadBatch, RedactionUpload } from '../src/uploader';
+import { UploadError, type Uploader, type SessionUploadBatch, type RedactionUpload } from '../src/uploader';
 
 describe('outbox', () => {
   let home: string;
@@ -97,6 +97,33 @@ describe('outbox', () => {
 
     result = await drain({ uploaderFor: () => ok, force: true });
     expect(result).toMatchObject({ uploaded: 1, remaining: 0 });
+  });
+
+  it('drops entries the server rejected outright instead of retrying them', async () => {
+    sessionFile('0000-turn.jsonl');
+    const uploader: Uploader = {
+      async uploadSession() {
+        throw new UploadError('POST returned 403', 403);
+      },
+      async uploadRedaction() {},
+    };
+    const result = await drain({ uploaderFor: () => uploader, budgetMs: 1000 });
+    expect(result).toMatchObject({ uploaded: 0, failed: 0, dropped: 1, remaining: 0, lastError: 'POST returned 403' });
+    expect(listEntries()).toEqual([]);
+  });
+
+  it('keeps retrying after rate limits and server errors', async () => {
+    sessionFile('0000-turn.jsonl');
+    for (const status of [429, 500, 503, undefined]) {
+      const uploader: Uploader = {
+        async uploadSession() {
+          throw new UploadError(`POST returned ${status}`, status);
+        },
+        async uploadRedaction() {},
+      };
+      const result = await drain({ uploaderFor: () => uploader, budgetMs: 1000, force: true });
+      expect(result).toMatchObject({ failed: 1, dropped: 0, remaining: 1 });
+    }
   });
 
   it('grows the backoff exponentially up to six hours', () => {

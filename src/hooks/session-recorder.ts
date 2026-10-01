@@ -1392,7 +1392,7 @@ export async function flushOutbox(
   try {
     return await drainOutbox({ uploaderFor, budgetMs: options.budgetMs, force: options.force });
   } catch (e) {
-    return { uploaded: 0, failed: 0, remaining: listOutboxEntries().length, lastError: (e as Error).message };
+    return { uploaded: 0, failed: 0, dropped: 0, remaining: listOutboxEntries().length, lastError: (e as Error).message };
   }
 }
 

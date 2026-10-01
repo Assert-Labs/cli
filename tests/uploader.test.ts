@@ -47,7 +47,7 @@ describe('uploader', () => {
     await uploader.uploadSession(batch);
     const last = received[received.length - 1];
     expect(last.method).toBe('POST');
-    expect(last.url).toBe('/v1/sessions/s1/files');
+    expect(last.url).toBe('/api/v1/sessions/s1/files');
     expect(last.headers.authorization).toBe('Bearer tok');
     expect(last.headers['user-agent']).toBe('assert-cli/1.2.3');
     expect(last.body).toEqual(batch);
@@ -64,7 +64,7 @@ describe('uploader', () => {
     status = 200;
     const uploader = createUploader({ apiUrl: baseUrl, token: 'tok', version: 'dev' });
     await uploader.uploadRedaction({ repo: batch.repo, session: batch.session, directive: { target: 'current-turn' } });
-    expect(received[received.length - 1].url).toBe('/v1/sessions/s1/redactions');
+    expect(received[received.length - 1].url).toBe('/api/v1/sessions/s1/redactions');
   });
 
   it('reports non-2xx responses with their status', async () => {
