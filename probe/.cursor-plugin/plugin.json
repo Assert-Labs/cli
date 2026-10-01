@@ -5,5 +5,58 @@
   "author": {
     "name": "Assert Labs"
   },
-  "hooks": "./hooks/cursor.json"
+  "hooks": {
+    "hooks": {
+      "sessionStart": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline sessionStart"
+        }
+      ],
+      "beforeSubmitPrompt": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline beforeSubmitPrompt"
+        }
+      ],
+      "preToolUse": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline preToolUse"
+        }
+      ],
+      "postToolUse": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline postToolUse"
+        }
+      ],
+      "afterFileEdit": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline afterFileEdit"
+        }
+      ],
+      "beforeShellExecution": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline beforeShellExecution"
+        }
+      ],
+      "afterShellExecution": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline afterShellExecution"
+        }
+      ],
+      "afterAgentResponse": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline afterAgentResponse"
+        }
+      ],
+      "stop": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline stop"
+        }
+      ],
+      "sessionEnd": [
+        {
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor-inline sessionEnd"
+        }
+      ]
+    }
+  }
 }
