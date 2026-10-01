@@ -91,6 +91,37 @@ on its first run, no re-init required. You can still re-run `assert init` any
 time to refresh hooks (e.g. after upgrading assert, or to pick up an agent's
 version-specific features), or `assert init <agent>` to (re)install just one.
 
+### Cloud agents
+
+Hosted agents don't run `assert init`; they pick capture up either from an
+org-level plugin or from hook files committed to the repo. Both routes were
+verified in real cloud sessions.
+
+**Org-level plugin** (no repo changes). The plugin is built from this repo
+(`pnpm build:plugin`) and published at [`Assert-Labs/plugin`](https://github.com/Assert-Labs/plugin):
+
+- **Claude Code** — an organization Owner pastes the block from the plugin's
+  README into Organization settings → Claude Code → Managed settings. It
+  registers the marketplace, enables the plugin, and sets
+  `CLAUDE_CODE_SYNC_PLUGIN_INSTALL=1` so cloud sessions wait for the install.
+- **Devin** — `devin plugins install Assert-Labs/plugin`, or list it under
+  `requiredPlugins` in the org manifest with `ASSERT_TOKEN` in its `env`.
+
+**Repo hooks** (one commit, any host that reads hooks from the repository):
+
+```bash
+assert init --repo    # writes .claude/settings.json, .cursor/hooks.json,
+                      # .devin/hooks.v1.json, .codex/hooks.json and .assert/hook.sh
+```
+
+Each hook runs `.assert/hook.sh`, which installs the CLI into `~/.assert` on
+first use. This is the route for Cursor cloud agents and for Claude Code teams
+without managed settings. Codex cloud tasks don't run hooks today.
+
+Either way, uploads need a token where the agent runs: `ASSERT_TOKEN` in the
+host's environment or secrets, or a repo token committed in
+`.assert/config.json`.
+
 ### Requirements
 
 - macOS or Linux, x64 or arm64 (no Windows or Alpine/musl build yet)

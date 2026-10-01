@@ -66,6 +66,7 @@ import { buildTrace } from './agent-trace';
 import { type AttributionEvent, type SessionEvent, type SessionSource } from './schema';
 import { getRepoId } from './repo-identity';
 import { getSessionsDir, loadIndex } from './session-index';
+import { installRepoHooks, SHIM_PATH } from './repo-hooks';
 
 import { calculateAgentContribution, hashLine, type AttributionRecord } from './line-attribution';
 import { parseSession, getTurn, turnContext, type BlameLine } from './core';
@@ -314,7 +315,32 @@ export function resolveInitAgents(
   return agent ? [agent] : supported;
 }
 
+/**
+ * `assert init --repo`: commit capture hooks into the current repo so hosts
+ * that read hooks from the repository (Claude Code on the web, Cursor cloud
+ * agents, Devin, local Codex) capture every session on it. Nothing is
+ * installed on this machine.
+ */
+function cmdInitRepo(): void {
+  const gitRoot = findGitRoot(process.cwd());
+  if (!gitRoot) {
+    error('Not in a git repository');
+    process.exit(1);
+  }
+  const written = installRepoHooks(gitRoot, VERSION);
+  log(`Wrote repo hooks into ${gitRoot}:`);
+  for (const rel of written) console.log(`  ${rel}`);
+  console.log('');
+  log(`Commit these files. Each hook runs ${SHIM_PATH}, which installs the CLI on first use.`);
+  log('Uploads need a token: set ASSERT_TOKEN in each host\'s environment, or commit');
+  log('.assert/config.json with a repo token (`{ "token": "..." }`).');
+}
+
 async function cmdInit(agent?: string): Promise<void> {
+  if (agent === '--repo') {
+    cmdInitRepo();
+    return;
+  }
   const home = process.env.HOME || process.env.USERPROFILE || '';
   const assertDir = path.join(home, '.assert');
   const binDir = path.join(assertDir, 'bin');
@@ -1237,6 +1263,7 @@ assert - Capture AI agent sessions and track code attribution
 
 Usage:
   assert init [agent]            Initialize hooks globally (all agents if none specified)
+  assert init --repo             Commit capture hooks into this repo (cloud agents read them)
   assert sessions                List sessions in current repo
   assert sessions --all          List all sessions (central storage)
   assert show <session-id>       Show session details
@@ -1272,6 +1299,7 @@ Supported agents:
 Examples:
   assert init                    # Initialize hooks for all agents
   assert init claude-code        # Initialize hooks for Claude Code only
+  assert init --repo             # Add .claude/.cursor/.devin/.codex hooks to this repo
   assert sessions                # List sessions in current project
   assert blame src/index.ts      # Show which agent wrote each line
   assert show abc123-xyz         # View a specific session
