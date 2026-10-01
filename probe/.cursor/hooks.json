@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "./.devin/log.sh cursor-repo sessionStart"
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "./.devin/log.sh cursor-repo beforeSubmitPrompt"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "./.devin/log.sh cursor-repo preToolUse"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "./.devin/log.sh cursor-repo postToolUse"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "./.devin/log.sh cursor-repo afterFileEdit"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "./.devin/log.sh cursor-repo beforeShellExecution"
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": "./.devin/log.sh cursor-repo afterShellExecution"
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "./.devin/log.sh cursor-repo afterAgentResponse"
+      }
+    ],
+    "stop": [
+      {
+        "command": "./.devin/log.sh cursor-repo stop"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "./.devin/log.sh cursor-repo sessionEnd"
+      }
+    ]
+  }
+}

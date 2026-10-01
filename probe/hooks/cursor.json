@@ -40,6 +40,16 @@
       {
         "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor sessionEnd"
       }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor beforeShellExecution"
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": "\"${CLAUDE_PLUGIN_ROOT}/log.sh\" cursor afterShellExecution"
+      }
     ]
   }
 }
