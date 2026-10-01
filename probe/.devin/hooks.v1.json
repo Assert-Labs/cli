@@ -4,7 +4,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "\"${DEVIN_PROJECT_DIR:-.}/.hook-probe/log.sh\" devin SessionStart",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo SessionStart",
           "timeout": 10
         }
       ]
@@ -15,7 +15,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "\"${DEVIN_PROJECT_DIR:-.}/.hook-probe/log.sh\" devin UserPromptSubmit",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo UserPromptSubmit",
           "timeout": 10
         }
       ]
@@ -26,7 +26,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "\"${DEVIN_PROJECT_DIR:-.}/.hook-probe/log.sh\" devin PreToolUse",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo PreToolUse",
           "timeout": 10
         }
       ]
@@ -37,7 +37,18 @@
       "hooks": [
         {
           "type": "command",
-          "command": "\"${DEVIN_PROJECT_DIR:-.}/.hook-probe/log.sh\" devin PostToolUse",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo PostToolUse",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "PermissionRequest": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo PermissionRequest",
           "timeout": 10
         }
       ]
@@ -48,18 +59,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "\"${DEVIN_PROJECT_DIR:-.}/.hook-probe/log.sh\" devin Stop",
-          "timeout": 10
-        }
-      ]
-    }
-  ],
-  "SessionEnd": [
-    {
-      "hooks": [
-        {
-          "type": "command",
-          "command": "\"${DEVIN_PROJECT_DIR:-.}/.hook-probe/log.sh\" devin SessionEnd",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo Stop",
           "timeout": 10
         }
       ]
@@ -70,7 +70,18 @@
       "hooks": [
         {
           "type": "command",
-          "command": "\"${DEVIN_PROJECT_DIR:-.}/.hook-probe/log.sh\" devin PostCompaction",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo PostCompaction",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "\"${DEVIN_PROJECT_DIR:-.}/.devin/log.sh\" devin-repo SessionEnd",
           "timeout": 10
         }
       ]

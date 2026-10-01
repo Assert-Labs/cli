@@ -19,3 +19,10 @@ host can install it by `owner/repo`. Manifests for each host sit side by side:
 `hooks.json` at the root is Devin's native hooks file (same shape as
 `.devin/hooks.v1.json`). Its commands locate `log.sh` through whichever
 plugin-root variable the host sets, falling back to Devin's plugin cache path.
+
+## Devin
+
+Per Devin's docs, a plugin's `hooks.json` registers hooks "in local Devin
+sessions (the CLI and Devin Desktop)" only. Cloud sessions run repo-level hooks
+instead, so this repo also carries `.devin/hooks.v1.json` and `.devin/log.sh`:
+start a Devin cloud session on this repo to test that path.
